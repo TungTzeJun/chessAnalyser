@@ -461,6 +461,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 const score = det ? det.score : null;
                 if (score === null) { series.push(0); } else { series.push(score); }
                 side = side === 'w' ? 'b' : 'w';
+            } else {
+                console.warn('Failed to apply move:', san, 'at index', i);
+                if (message) message.textContent = `Analysis stopped: Move ${i + 1} (${san}) is invalid or unsupported.`;
+                break;
             }
         }
         return series;
@@ -612,8 +616,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (isCapture) {
                         if (tr - r === dir && Math.abs(tc - c) === 1) res.push({ r, c });
                     } else {
+                        // Regular move
                         if (tc === c && tr - r === dir && !b[tr][tc]) res.push({ r, c });
+                        // Double square move
                         if (tc === c && tr - r === 2 * dir && r === startRow && !b[r + dir][c] && !b[tr][tc]) res.push({ r, c });
+                        // Support for en passant: allow capture to empty square if it's a diagonal pawn move
+                        if (Math.abs(tc - c) === 1 && tr - r === dir && !b[tr][tc]) res.push({ r, c });
                     }
                 }
             }
@@ -644,6 +652,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (cands.length === 0) return false;
         const from = cands[0];
         const moving = piece === 'P' ? (side + 'P') : (side + piece);
+
+        // En passant detection
+        if (piece === 'P' && Math.abs(tc - from.c) === 1 && !b[tr][tc]) {
+            const victimRow = side === 'w' ? tr + 1 : tr - 1;
+            b[victimRow][tc] = null;
+        }
+
         b[tr][tc] = promo ? (side + promo) : moving;
         b[from.r][from.c] = null;
         return true;
