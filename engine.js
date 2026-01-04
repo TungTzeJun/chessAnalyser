@@ -671,16 +671,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else if (piece === 'P') {
                     const dir = isWhite ? -1 : 1;
                     const startRow = isWhite ? 6 : 1;
-                    const isCapture = !!b[tr][tc];
-                    if (isCapture) {
+
+                    // In SAN, a pawn move is ONLY diagonal if it's a capture, 
+                    // and captures for pawns ALWAYS include the starting file as a hint (e.g., "exf4" or "ef").
+                    const isCaptureAttempt = !!(hint && /^[a-h]$/.test(hint));
+
+                    if (isCaptureAttempt) {
+                        // Diagonal capture (including potential en passant)
                         if (tr - r === dir && Math.abs(tc - c) === 1) res.push({ r, c });
                     } else {
-                        // Regular move
-                        if (tc === c && tr - r === dir && !b[tr][tc]) res.push({ r, c });
-                        // Double square move
-                        if (tc === c && tr - r === 2 * dir && r === startRow && !b[r + dir][c] && !b[tr][tc]) res.push({ r, c });
-                        // Support for en passant: allow capture to empty square if it's a diagonal pawn move
-                        if (Math.abs(tc - c) === 1 && tr - r === dir && !b[tr][tc]) res.push({ r, c });
+                        // Regular move must be vertical
+                        if (tc === c) {
+                            if (tr - r === dir && !b[tr][tc]) res.push({ r, c });
+                            // Double square move
+                            if (tr - r === 2 * dir && r === startRow && !b[r + dir][c] && !b[tr][tc]) res.push({ r, c });
+                        }
                     }
                 }
             }
