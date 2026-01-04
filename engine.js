@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const metaResult = document.getElementById('metaResult');
     const metaEvent = document.getElementById('metaEvent');
     const metaDate = document.getElementById('metaDate');
-    const blunderRows = document.getElementById('blunderRows');
     const evalCanvas = document.getElementById('evalCanvas');
     const boardSection = document.getElementById('boardSection');
     const boardEl = document.getElementById('board');
@@ -83,30 +82,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return series;
     }
 
-    function generateBlunderList(tokens) {
-        const rows = [];
-        let nag = null;
-        let ply = 0;
-        for (let i = 0; i < tokens.length; i++) {
-            const t = tokens[i];
-            if (/^\$[24]$/.test(t)) {
-                nag = t === '$4' ? 'Blunder' : 'Mistake';
-                continue;
-            }
-            if (/^[a-hKQRNB]/.test(t)) {
-                const hasQ = /\?\?/.test(t) ? 'Blunder' : (/\?/.test(t) ? 'Mistake' : null);
-                const type = hasQ || nag;
-                if (type) {
-                    const side = ply % 2 === 0 ? 'White' : 'Black';
-                    const moveNumber = Math.floor(ply / 2) + 1;
-                    rows.push({ moveNumber, side, move: t.replace(/[!?]+/g, ''), type });
-                }
-                ply += 1;
-                nag = null;
-            }
-        }
-        return rows;
-    }
 
     function drawEval(series, pointer) {
         if (!evalCanvas) return;
@@ -889,26 +864,6 @@ document.addEventListener('DOMContentLoaded', function () {
             if (metaEvent) metaEvent.textContent = headers.Event || '-';
             if (metaDate) metaDate.textContent = headers.Date || headers.UTCDate || '-';
             if (metadataCard) metadataCard.hidden = false;
-            const bl = generateBlunderList(moves);
-            if (blunderRows) {
-                blunderRows.innerHTML = '';
-                for (const r of bl) {
-                    const tr = document.createElement('tr');
-                    const td1 = document.createElement('td');
-                    const td2 = document.createElement('td');
-                    const td3 = document.createElement('td');
-                    const td4 = document.createElement('td');
-                    td1.textContent = r.moveNumber.toString();
-                    td2.textContent = r.side;
-                    td3.textContent = r.move;
-                    td4.textContent = r.type;
-                    tr.appendChild(td1);
-                    tr.appendChild(td2);
-                    tr.appendChild(td3);
-                    tr.appendChild(td4);
-                    blunderRows.appendChild(tr);
-                }
-            }
             if (!evals || evals.length === 0) {
                 const msgEl = message;
                 if (msgEl) msgEl.textContent = 'Analyzing with Stockfish...';
