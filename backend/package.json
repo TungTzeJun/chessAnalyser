@@ -1,0 +1,12 @@
+{
+  "name": "chess-analyzer-backend",
+  "version": "1.0.0",
+  "description": "Backend for chess analyzer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}

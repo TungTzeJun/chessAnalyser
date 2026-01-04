@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chess Performance Analyser</title>
+    <link rel="stylesheet" href="main_design.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,
+    wght@0,14..32 ,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <h1 class="title"><i>Chess Performance Analyser</i></h1>
+    </header>
+    <section id="layout">
+        <section id="pgnBar">
+            <label for="pgnInput">PGN</label>
+            <div class="inline-controls">
+                <textarea id="pgnInput" rows="6" placeholder="Paste PGN here"></textarea>
+                <button id="importPgn">Import PGN</button>
+            </div>
+            <div id="pgnMessage"></div>
+        </section>
+        <section id="boardSection" class="card" hidden>
+            <h2>Board</h2>
+            <div class="board-wrapper">
+                <div id="board" class="chess-board"></div>
+                <div class="board-sidebar">
+                    <div class="engine-controls">
+                        <div class="ctrl">
+                            <label for="evalMode">Mode</label>
+                            <select id="evalMode">
+                                <option value="movetime">Movetime</option>
+                                <option value="depth">Depth</option>
+                            </select>
+                        </div>
+                        <div class="ctrl">
+                            <label for="evalValue">Value</label>
+                            <input id="evalValue" type="number" min="100" step="100" value="750">
+                        </div>
+                    </div>
+                    <div class="analysis-panel">
+                        <h3>Analysis</h3>
+                        <div class="analysis-controls">
+                            <button id="analyzeBtn">Analyze Position</button>
+                            <div class="pv-controls">
+                                <button id="pvPrev" aria-label="PV previous">◀</button>
+                                <button id="pvNext" aria-label="PV next">▶</button>
+                                <button id="pvReset" aria-label="PV reset">⟲</button>
+                            </div>
+                        </div>
+                        <div id="pvInfo" class="pv-info">Score: -</div>
+                        <ol id="pvList" class="pv-list"></ol>
+                    </div>
+                </div>
+                <div class="eval-bar" id="evalBar">
+                    <div class="eval-fill" id="evalFill"></div>
+                    <div class="eval-label" id="evalLabel">-</div>
+                </div>
+            </div>
+            <div class="control-bar">
+                <button id="firstMove" aria-label="First move">⏮</button>
+                <button id="prevMove" aria-label="Previous move">◀</button>
+                <button id="nextMove" aria-label="Next move">▶</button>
+                <button id="lastMove" aria-label="Last move">⏭</button>
+                <span id="moveStatus" class="status"></span>
+            </div>
+        </section>
+        <section id="results">
+            <div id="metadata" class="card" hidden>
+                <h2>Game Metadata</h2>
+                <div class="grid">
+                    <div>
+                        <div class="label">White</div>
+                        <div id="metaWhite" class="value">-</div>
+                    </div>
+                    <div>
+                        <div class="label">Black</div>
+                        <div id="metaBlack" class="value">-</div>
+                    </div>
+                    <div>
+                        <div class="label">Result</div>
+                        <div id="metaResult" class="value">-</div>
+                    </div>
+                    <div>
+                        <div class="label">Event</div>
+                        <div id="metaEvent" class="value">-</div>
+                    </div>
+                    <div>
+                        <div class="label">Date</div>
+                        <div id="metaDate" class="value">-</div>
+                    </div>
+                </div>
+            </div>
+            <div id="evalGraphCard" class="card">
+                <h2>Evaluation</h2>
+                <canvas id="evalCanvas" width="720" height="240"></canvas>
+            </div>
+            <div id="blunders" class="card">
+                <h2>Blunder List</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Move</th>
+                            <th>Side</th>
+                            <th>Play</th>
+                            <th>Type</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blunderRows"></tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+    <script>
+        window.STOCKFISH_WORKER_PATH = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.wasm.js';
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.min.js"></script>
+    <script src="engine.js"></script>
+</body>
+
+</html>
