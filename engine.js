@@ -14,8 +14,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const evalBar = document.getElementById('evalBar');
     const evalFill = document.getElementById('evalFill');
     const evalLabel = document.getElementById('evalLabel');
-    const evalMode = document.getElementById('evalMode');
-    const evalValue = document.getElementById('evalValue');
     const analyzeBtn = document.getElementById('analyzeBtn');
     const pvList = document.getElementById('pvList');
     const pvInfo = document.getElementById('pvInfo');
@@ -254,18 +252,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getEvalSettings() {
-        const mode = (evalMode && (evalMode.value === 'depth')) ? 'depth' : 'movetime';
-        let v = 750;
-        if (evalValue) {
-            const n = parseInt(evalValue.value, 10);
-            if (!isNaN(n) && n > 0) v = n;
-        }
-        if (mode === 'depth') {
-            v = Math.min(Math.max(v, 1), 50);
-        } else {
-            v = Math.min(Math.max(v, 100), 5000);
-        }
-        return { mode, value: v };
+        return { mode: 'depth', value: 13 };
     }
 
     function parseScoreLine(line) {
@@ -897,22 +884,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    if (evalMode) {
-        evalMode.addEventListener('change', function () {
-            const gs = getEvalSettings();
-            const idx = Math.max(0, Math.min(currentMoves.length, currentIndex));
-            const st = computeBoardToIndex(idx);
-            updateEvalBarForBoard(st.b, st.side);
-        });
-    }
-    if (evalValue) {
-        evalValue.addEventListener('change', function () {
-            const gs = getEvalSettings();
-            const idx = Math.max(0, Math.min(currentMoves.length, currentIndex));
-            const st = computeBoardToIndex(idx);
-            updateEvalBarForBoard(st.b, st.side);
-        });
-    }
     if (analyzeBtn) {
         analyzeBtn.addEventListener('click', function () {
             analyzeCurrentPosition();
