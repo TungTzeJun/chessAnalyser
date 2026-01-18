@@ -270,16 +270,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function parsePvMoves(line) {
         if (typeof line !== 'string') return [];
-        const idx = line.indexOf(' pv ');
-        if (idx === -1) return [];
-        const pvStr = line.slice(idx + 4).trim();
+        // Stockfish lines look like: info depth 10 seldepth 12 multipv 1 score cp 12 nodes 1234 nps 5678 hashfull 0 tbhits 0 time 123 pv e2e4 e7e5 ...
+        const pvMatch = line.match(/\spv\s+(.*)$/);
+        if (!pvMatch) return [];
+
+        const pvStr = pvMatch[1].trim();
         const tokens = pvStr.split(/\s+/);
         const moves = [];
         for (let i = 0; i < tokens.length; i++) {
             const t = tokens[i];
+            // Match UCI moves (e.g., e2e4, e7e5, g1f3, a7a8q)
             if (/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(t)) {
                 moves.push(t);
             } else {
+                // Stop if we hit a non-move token (though in UCI PV it should all be moves)
                 break;
             }
         }
@@ -772,10 +776,23 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderPvList(pv) {
         if (!pvList) return;
         pvList.innerHTML = '';
+        if (!pv || pv.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No moves found';
+            li.style.color = 'var(--muted)';
+            li.style.listStyle = 'none';
+            pvList.appendChild(li);
+            return;
+        }
         for (let i = 0; i < pv.length; i++) {
             const li = document.createElement('li');
             li.textContent = pv[i];
-            if (i === analysisIndex) li.style.fontWeight = '700';
+            if (i === analysisIndex) {
+                li.style.background = 'var(--accent)';
+                li.style.color = 'white';
+                li.style.borderRadius = '4px';
+                li.style.padding = '2px 6px';
+            }
             pvList.appendChild(li);
         }
     }
