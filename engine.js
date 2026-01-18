@@ -293,7 +293,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const ok = await initStockfish();
             if (!ok) return { score: null, best: null };
         }
-        if (engineBusy) return { score: null, best: null };
+        if (engineBusy) {
+            // If already busy, stop the engine to give the new request priority
+            if (engineWorker) engineWorker.postMessage('stop');
+            // Wait a tiny bit for the engine to acknowledge 'stop'
+            await new Promise(r => setTimeout(r, 50));
+        }
         engineBusy = true;
         let lastScore = null;
         let best = null;
@@ -825,6 +830,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (window.chessPGN && Array.isArray(window.chessPGN.evals)) {
             drawEval(window.chessPGN.evals, applied);
         }
+        // Clear deep analysis view when moving normally
+        analysisPV = [];
+        renderPvList([]);
+        if (pvInfo) pvInfo.textContent = 'Score: -';
+
         if (moveStatus) moveStatus.textContent = 'Move ' + applied + ' / ' + currentMoves.length;
         const toMove = applied % 2 === 0 ? 'w' : 'b';
         if (window.chessPGN && Array.isArray(window.chessPGN.evals) && window.chessPGN.evals.length) {
