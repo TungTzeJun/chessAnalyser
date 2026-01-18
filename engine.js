@@ -953,5 +953,4 @@ document.addEventListener('DOMContentLoaded', function () {
             if (message) message.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
         }
     });
-} ) ;  
- 
+});
