@@ -282,50 +282,36 @@ header {
     margin: 0;
 }
 
-.analysis-panel {
-    width: 100%;
-    margin: 0;
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-}
-
-.analysis-panel h3 {
-    margin: 0;
-    font-size: 16px;
-}
-
-.analysis-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: space-between;
-}
-
-.analysis-controls button {
-    background: var(--accent);
-    color: white;
-    border: none;
+.move-classification {
+    padding: 12px;
+    background: #0b1220;
     border-radius: 8px;
-    padding: 6px 10px;
-    font-weight: 600;
-    cursor: pointer;
+    text-align: center;
 }
 
-.pv-controls {
-    display: flex;
-    gap: 8px;
-}
-
-.pv-info {
-    font-size: 12px;
+.classification-tag {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 14px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    background: var(--border);
     color: var(--muted);
 }
 
-.pv-list {
-    margin: 0;
-    padding-left: 20px;
-    font-size: 13px;
+.classification-tag.book { background: #3b82f6; color: white; }
+.classification-tag.best { background: #10b981; color: white; }
+.classification-tag.excellent { background: #34d399; color: white; }
+.classification-tag.good { background: #60a5fa; color: white; }
+.classification-tag.inaccuracy { background: #fbbf24; color: black; }
+.classification-tag.mistake { background: #f97316; color: white; }
+.classification-tag.blunder { background: #ef4444; color: white; }
+
+.classification-detail {
+    font-size: 11px;
+    color: var(--muted);
 }
 
 .engine-controls .ctrl {

@@ -14,12 +14,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const evalBar = document.getElementById('evalBar');
     const evalFill = document.getElementById('evalFill');
     const evalLabel = document.getElementById('evalLabel');
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    const pvList = document.getElementById('pvList');
-    const pvInfo = document.getElementById('pvInfo');
-    const pvPrev = document.getElementById('pvPrev');
-    const pvNext = document.getElementById('pvNext');
-    const pvReset = document.getElementById('pvReset');
+    const classificationTag = document.getElementById('classificationTag');
+    const classificationDetail = document.getElementById('classificationDetail');
     const firstBtn = document.getElementById('firstMove');
     const prevBtn = document.getElementById('prevMove');
     const nextBtn = document.getElementById('nextMove');
@@ -164,7 +160,6 @@ document.addEventListener('DOMContentLoaded', function () {
             };
         });
     }
-
     async function initStockfish() {
         try {
             if (engineWorker) return engineReady;
@@ -425,7 +420,31 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (myId !== currentAnalysisId) return null;
 
                 const score = det ? det.score : null;
-                if (score === null) { series.push(0); } else { series.push(score); }
+                const bestMove = det ? det.best : null;
+
+                // Classify the move
+                let classification = 'Good';
+                let prevScore = series.length > 0 ? series[series.length - 1] : 0;
+                let drop = Math.abs(prevScore - (score || prevScore));
+
+                if (i < 10 && Math.abs(score || 0) < 0.6) {
+                    classification = 'Book';
+                } else if (drop < 0.2) {
+                    classification = 'Best';
+                } else if (drop < 0.5) {
+                    classification = 'Excellent';
+                } else if (drop < 0.9) {
+                    classification = 'Inaccuracy';
+                } else if (drop < 2.0) {
+                    classification = 'Mistake';
+                } else {
+                    classification = 'Blunder';
+                }
+
+                if (!window.chessPGN.classifications) window.chessPGN.classifications = [];
+                window.chessPGN.classifications.push({ label: classification, score: score });
+
+                if (score === null) { series.push(prevScore); } else { series.push(score); }
                 side = side === 'w' ? 'b' : 'w';
             } else {
                 console.warn('Failed to apply move:', san, 'at index', i);
@@ -818,6 +837,26 @@ document.addEventListener('DOMContentLoaded', function () {
         updateEvalBarForBoard(st.b, st.side);
     }
 
+    function updateClassification(index) {
+        if (!classificationTag || !classificationDetail) return;
+        if (!window.chessPGN || !window.chessPGN.classifications) {
+            classificationTag.textContent = '-';
+            classificationDetail.textContent = 'Analyze game to see quality';
+            return;
+        }
+
+        const data = window.chessPGN.classifications[index - 1];
+        if (!data) {
+            classificationTag.textContent = '-';
+            classificationDetail.textContent = 'Start of game';
+            return;
+        }
+
+        classificationTag.textContent = data.label;
+        classificationTag.className = 'classification-tag ' + data.label.toLowerCase();
+        classificationDetail.textContent = `Evaluation: ${data.score >= 0 ? '+' : ''}${data.score?.toFixed(1) || '-'}`;
+    }
+
     function stepPv(delta) {
         if (!analysisBase || !analysisPV || analysisPV.length === 0) return;
         analysisIndex = Math.max(0, Math.min(analysisPV.length, analysisIndex + delta));
@@ -847,10 +886,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (window.chessPGN && Array.isArray(window.chessPGN.evals)) {
             drawEval(window.chessPGN.evals, applied);
         }
-        // Clear deep analysis view when moving normally
-        analysisPV = [];
-        renderPvList([]);
-        if (pvInfo) pvInfo.textContent = 'Score: -';
+
+        updateClassification(applied);
 
         if (moveStatus) moveStatus.textContent = 'Move ' + applied + ' / ' + currentMoves.length;
         const toMove = applied % 2 === 0 ? 'w' : 'b';
@@ -916,25 +953,5 @@ document.addEventListener('DOMContentLoaded', function () {
             if (message) message.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
         }
     });
-
-    if (analyzeBtn) {
-        analyzeBtn.addEventListener('click', function () {
-            analyzeCurrentPosition();
-        });
-    }
-    if (pvPrev) {
-        pvPrev.addEventListener('click', function () { stepPv(-1); });
-    }
-    if (pvNext) {
-        pvNext.addEventListener('click', function () { stepPv(1); });
-    }
-    if (pvReset) {
-        pvReset.addEventListener('click', function () {
-            analysisIndex = 0;
-            if (!analysisBase) return;
-            renderPvList(analysisPV);
-            renderBoard(analysisBase.b);
-            updateEvalBarForBoard(analysisBase.b, analysisBase.side);
-        });
-    }
-});
+} ) ;  
+ 
