@@ -336,12 +336,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 setTimeout(function () {
                     if (!resolved) {
-                        console.warn('Stockfish timeout, resetting worker');
-                        if (engineWorker) {
-                            if (engineWorker.terminate) engineWorker.terminate();
-                            engineWorker = null;
-                            engineReady = false;
-                        }
+                        console.warn('Stockfish analysis timed out, resolving with current results');
                         safeResolve({ score: lastScore, best, pv: lastPv });
                     }
                 }, timeoutMs);
@@ -739,16 +734,26 @@ document.addEventListener('DOMContentLoaded', function () {
         const t = algebraicToRC(to);
         const moving = b[f.r][f.c];
         if (!moving) return false;
+
+        const isWhite = moving[0] === 'w';
+        const isPawn = moving[1] === 'P';
         const isK = moving[1] === 'K';
-        const castleW = from === 'e1' && (to === 'g1' || to === 'c1');
-        const castleB = from === 'e8' && (to === 'g8' || to === 'c8');
+
+        // En passant detection: pawn moving diagonally to an empty square
+        if (isPawn && f.c !== t.c && !b[t.r][t.c]) {
+            const victimRow = isWhite ? t.r + 1 : t.r - 1;
+            b[victimRow][t.c] = null;
+        }
+
+        const castleW = isK && from === 'e1' && (to === 'g1' || to === 'c1');
+        const castleB = isK && from === 'e8' && (to === 'g8' || to === 'c8');
         b[t.r][t.c] = promo ? (side + promo.toUpperCase()) : moving;
         b[f.r][f.c] = null;
-        if (isK && castleW) {
+        if (castleW) {
             if (to === 'g1') { b[7][5] = 'wR'; b[7][7] = null; }
             if (to === 'c1') { b[7][3] = 'wR'; b[7][0] = null; }
         }
-        if (isK && castleB) {
+        if (castleB) {
             if (to === 'g8') { b[0][5] = 'bR'; b[0][7] = null; }
             if (to === 'c8') { b[0][3] = 'bR'; b[0][0] = null; }
         }
@@ -774,6 +779,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const idx = Math.max(0, Math.min(currentMoves.length, currentIndex));
         const st = computeBoardToIndex(idx);
         analysisBase = { b: st.b, side: st.side };
+        if (pvInfo) pvInfo.textContent = 'Analyzing...';
         const det = await evalFenDetailed(boardToFEN(st.b, st.side), getEvalSettings());
         analysisPV = Array.isArray(det.pv) ? det.pv.slice(0, 16) : [];
         analysisIndex = 0;
