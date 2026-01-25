@@ -118,7 +118,13 @@ header {
     color: var(--muted);
 }
 
-.depth-control {
+.engine-settings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.setting-item {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -126,15 +132,16 @@ header {
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 0 12px;
+    flex: 1 1 auto;
 }
 
-.depth-control label {
-    font-size: 12px;
+.setting-item label {
+    font-size: 11px;
     color: var(--muted);
     font-weight: 600;
 }
 
-.depth-control select {
+.setting-item select {
     background: transparent;
     color: var(--text);
     border: none;

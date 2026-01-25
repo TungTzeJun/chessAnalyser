@@ -22,18 +22,40 @@
             <div class="inline-controls">
                 <textarea id="pgnInput" rows="6" placeholder="Paste PGN here"></textarea>
                 <button id="importPgn">Import PGN</button>
-                <div class="depth-control">
-                    <label for="analysisDepth">Depth:</label>
-                    <select id="analysisDepth">
-                        <option value="10">10 (Fast)</option>
-                        <option value="12">12</option>
-                        <option value="14">14</option>
-                        <option value="16">16</option>
-                        <option value="18" selected>18 (Balanced)</option>
-                        <option value="20">20</option>
-                        <option value="22">22 (Deep)</option>
-                        <option value="24">24 (Very Deep)</option>
-                    </select>
+                <div class="engine-settings">
+                    <div class="setting-item">
+                        <label for="analysisDepth">Depth:</label>
+                        <select id="analysisDepth">
+                            <option value="10">10 (Fast)</option>
+                            <option value="12">12</option>
+                            <option value="14">14</option>
+                            <option value="16">16</option>
+                            <option value="18" selected>18 (Balanced)</option>
+                            <option value="20">20</option>
+                            <option value="22">22</option>
+                            <option value="24">24 (Deep)</option>
+                            <option value="26">26</option>
+                            <option value="28">28</option>
+                            <option value="30">30 (Cloud Quality)</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="analysisThreads">Threads:</label>
+                        <select id="analysisThreads">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="4" selected>4</option>
+                            <option value="8">8</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="analysisMultiPV">Multi-PV:</label>
+                        <select id="analysisMultiPV">
+                            <option value="1" selected>1 (Standard)</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             <div id="pgnMessage"></div>

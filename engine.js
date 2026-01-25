@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const lastBtn = document.getElementById('lastMove');
     const moveStatus = document.getElementById('moveStatus');
     const analysisDepthSelect = document.getElementById('analysisDepth');
+    const analysisThreadsSelect = document.getElementById('analysisThreads');
+    const analysisMultiPVSelect = document.getElementById('analysisMultiPV');
 
     if (!input || !button) return;
 
@@ -228,9 +230,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             engineWorker.postMessage('ucinewgame');
 
-            // Performance/Accuracy Settings
-            engineWorker.postMessage('setoption name Hash value 256');
-            engineWorker.postMessage('setoption name Threads value 4');
+            // Performance/Accuracy Settings (Defaults, will be refined in getEvalSettings)
+            engineWorker.postMessage('setoption name Hash value 512');
 
             engineReady = true;
             return true;
@@ -271,11 +272,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function getEvalSettings() {
         let depth = 18;
+        let threads = 4;
+        let multipv = 1;
+
         if (analysisDepthSelect) {
             const v = parseInt(analysisDepthSelect.value, 10);
             if (!isNaN(v)) depth = v;
         }
-        return { mode: 'depth', value: depth };
+        if (analysisThreadsSelect) {
+            const v = parseInt(analysisThreadsSelect.value, 10);
+            if (!isNaN(v)) threads = v;
+        }
+        if (analysisMultiPVSelect) {
+            const v = parseInt(analysisMultiPVSelect.value, 10);
+            if (!isNaN(v)) multipv = parseInt(v, 10);
+        }
+
+        return { mode: 'depth', value: depth, threads, multipv };
     }
 
     function parseScoreLine(line) {
@@ -345,6 +358,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 };
                 try {
                     engineWorker.postMessage('stop');
+
+                    // Apply dynamic settings before analysis
+                    if (settings.threads) engineWorker.postMessage(`setoption name Threads value ${settings.threads}`);
+                    if (settings.multipv) engineWorker.postMessage(`setoption name MultiPV value ${settings.multipv}`);
+
                     engineWorker.postMessage('position fen ' + fen);
                     if (settings && settings.mode === 'depth') {
                         engineWorker.postMessage('go depth ' + settings.value);
