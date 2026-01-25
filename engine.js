@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const nextBtn = document.getElementById('nextMove');
     const lastBtn = document.getElementById('lastMove');
     const moveStatus = document.getElementById('moveStatus');
+    const pvList = document.getElementById('pvList');
+    const pvInfo = document.getElementById('pvInfo');
+
     if (!input || !button) return;
 
     function cleanPGN(pgn) {
@@ -76,7 +79,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return series;
     }
 
-
     function drawEval(series, pointer) {
         if (!evalCanvas) return;
         const ctx = evalCanvas.getContext('2d');
@@ -126,7 +128,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let engineBusy = false;
     let engineHandler = null;
 
-    // Helper to wrap WebSocket as a Worker-like object
     function createSocketWorker(url) {
         return new Promise((resolve, reject) => {
             const ws = new WebSocket(url);
@@ -136,7 +137,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         ws.send(msg);
                     } else {
                         console.warn('WS not open, cannot send:', msg);
-                        // If we try to send to a closed socket, invalidate the worker
                         if (engineWorker === worker) {
                             engineWorker = null;
                             engineReady = false;
@@ -160,13 +160,11 @@ document.addEventListener('DOMContentLoaded', function () {
             };
         });
     }
+
     async function initStockfish() {
         try {
             if (engineWorker && engineReady) return true;
-
             console.log('Stockfish: Starting initialization...');
-
-            // Try connecting to backend first
             try {
                 console.log('Stockfish: Attempting to connect to backend at ws://localhost:8080...');
                 const backendWorker = await createSocketWorker('ws://localhost:8080');
@@ -191,679 +189,635 @@ document.addEventListener('DOMContentLoaded', function () {
                         try {
                             console.log('Stockfish: Trying factory initialization');
                             worker = factory();
-                            if (!worker) {
-                                console.error('Stockfish: Failed to initialize any worker (local or CDN)');
-                                engineWorker = null;
-                                engineReady = false;
-                                return false;
-                            }
-                            engineWorker = worker;
-                            console.log('Stockfish: Local/CDN worker initialized');
-                        }
+                        } catch (_) { worker = null; }
+                    }
+                }
+                if (!worker) {
+                    console.error('Stockfish: Failed to initialize any worker (local or CDN)');
+                    engineWorker = null;
+                    engineReady = false;
+                    return false;
+                }
+                engineWorker = worker;
+                console.log('Stockfish: Local/CDN worker initialized');
+            }
 
             engineWorker.onmessage = function (e) {
-                            const line = (typeof e === 'string') ? e : ((e && e.data) ? String(e.data) : '');
-                            if (engineHandler) engineHandler(line);
-                        };
+                const line = (typeof e === 'string') ? e : ((e && e.data) ? String(e.data) : '');
+                if (engineHandler) engineHandler(line);
+            };
 
-                        const uciPromise = new Promise((resolve, reject) => {
-                            const handler = function (line) {
-                                if (/uciok/.test(line)) { resolve(true); }
-                            };
-                            engineHandler = handler;
-                            engineWorker.postMessage('uci');
-                            setTimeout(() => reject(new Error('uci timeout')), 5000);
-                        });
+            await new Promise((resolve, reject) => {
+                const handler = function (line) {
+                    if (/uciok/.test(line)) { resolve(true); }
+                };
+                engineHandler = handler;
+                engineWorker.postMessage('uci');
+                setTimeout(() => reject(new Error('uci timeout')), 5000);
+            });
+            console.log('Stockfish: UCI initialized');
 
-                        await uciPromise;
-                        console.log('Stockfish: UCI initialized');
+            await new Promise((resolve, reject) => {
+                const handler = function (line) {
+                    if (/readyok/.test(line)) { resolve(true); }
+                };
+                engineHandler = handler;
+                engineWorker.postMessage('isready');
+                setTimeout(() => reject(new Error('isready timeout')), 5000);
+            });
+            console.log('Stockfish: Engine ready');
 
-                        const readyPromise = new Promise((resolve, reject) => {
-                            const handler = function (line) {
-                                if (/readyok/.test(line)) { resolve(true); }
-                            };
-                            engineHandler = handler;
-                            engineWorker.postMessage('isready');
-                            setTimeout(() => reject(new Error('isready timeout')), 5000);
-                        });
+            engineWorker.postMessage('ucinewgame');
+            engineReady = true;
+            return true;
+        } catch (err) {
+            console.error('Stockfish init error:', err);
+            engineWorker = null;
+            engineReady = false;
+            return false;
+        } finally {
+            engineHandler = null;
+        }
+    }
 
-                        await readyPromise;
-                        console.log('Stockfish: Engine ready');
+    function boardToFEN(b, side) {
+        const rows = [];
+        for (let r = 0; r < 8; r++) {
+            let row = '';
+            let empty = 0;
+            for (let c = 0; c < 8; c++) {
+                const p = b[r][c];
+                if (!p) { empty++; continue; }
+                if (empty > 0) { row += String(empty); empty = 0; }
+                const isWhite = p[0] === 'w';
+                const letter = p[1];
+                row += isWhite ? letter : letter.toLowerCase();
+            }
+            if (empty > 0) row += String(empty);
+            rows.push(row);
+        }
+        const placement = rows.join('/');
+        const turn = side === 'w' ? 'w' : 'b';
+        const castling = '-';
+        const ep = '-';
+        const halfmove = '0';
+        const fullmove = '1';
+        return placement + ' ' + turn + ' ' + castling + ' ' + ep + ' ' + halfmove + ' ' + fullmove;
+    }
 
-                        engineWorker.postMessage('ucinewgame');
-                        engineReady = true;
-                        return true;
-                    } catch (err) {
-                        console.error('Stockfish init error:', err);
-                        engineWorker = null;
-                        engineReady = false;
-                        return false;
-                    } finally {
+    function getEvalSettings() {
+        return { mode: 'depth', value: 13 };
+    }
+
+    function parseScoreLine(line) {
+        const mMate = line.match(/score\s+mate\s+(-?\d+)/);
+        if (mMate) {
+            const sign = parseInt(mMate[1], 10) >= 0 ? 1 : -1;
+            return 99 * sign;
+        }
+        const mCp = line.match(/score\s+cp\s+(-?\d+)/);
+        if (mCp) {
+            return parseInt(mCp[1], 10) / 100;
+        }
+        return null;
+    }
+
+    function parsePvMoves(line) {
+        if (typeof line !== 'string') return [];
+        const pvMatch = line.match(/\spv\s+(.*)$/);
+        if (!pvMatch) return [];
+        const pvStr = pvMatch[1].trim();
+        const tokens = pvStr.split(/\s+/);
+        const moves = [];
+        for (let i = 0; i < tokens.length; i++) {
+            const t = tokens[i];
+            if (/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(t)) {
+                moves.push(t);
+            } else {
+                break;
+            }
+        }
+        return moves;
+    }
+
+    let currentAnalysisId = 0;
+
+    async function evalFenDetailed(fen, settings) {
+        if (!engineWorker || !engineReady) {
+            const ok = await initStockfish();
+            if (!ok) return { score: null, best: null };
+        }
+        if (engineBusy) {
+            if (engineWorker) engineWorker.postMessage('stop');
+            await new Promise(r => setTimeout(r, 50));
+        }
+        engineBusy = true;
+        let lastScore = null;
+        let best = null;
+        let lastPv = [];
+        try {
+            const timeoutMs = (settings && settings.mode === 'movetime') ? (settings.value + 3000) : 15000;
+            const res = await new Promise((resolve) => {
+                let resolved = false;
+                const safeResolve = (val) => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve(val);
                         engineHandler = null;
                     }
-                }
-
-                function boardToFEN(b, side) {
-                    const rows = [];
-                    for (let r = 0; r < 8; r++) {
-                        let row = '';
-                        let empty = 0;
-                        for (let c = 0; c < 8; c++) {
-                            const p = b[r][c];
-                            if (!p) { empty++; continue; }
-                            if (empty > 0) { row += String(empty); empty = 0; }
-                            const isWhite = p[0] === 'w';
-                            const letter = p[1];
-                            row += isWhite ? letter : letter.toLowerCase();
-                        }
-                        if (empty > 0) row += String(empty);
-                        rows.push(row);
-                    }
-                    const placement = rows.join('/');
-                    const turn = side === 'w' ? 'w' : 'b';
-                    const castling = '-';
-                    const ep = '-';
-                    const halfmove = '0';
-                    const fullmove = '1';
-                    return placement + ' ' + turn + ' ' + castling + ' ' + ep + ' ' + halfmove + ' ' + fullmove;
-                }
-
-                function getEvalSettings() {
-                    return { mode: 'depth', value: 13 };
-                }
-
-                function parseScoreLine(line) {
-                    const mMate = line.match(/score\s+mate\s+(-?\d+)/);
-                    if (mMate) {
-                        const sign = parseInt(mMate[1], 10) >= 0 ? 1 : -1;
-                        return 99 * sign;
-                    }
-                    const mCp = line.match(/score\s+cp\s+(-?\d+)/);
-                    if (mCp) {
-                        return parseInt(mCp[1], 10) / 100;
-                    }
-                    return null;
-                }
-
-                function parsePvMoves(line) {
-                    if (typeof line !== 'string') return [];
-                    // Stockfish lines look like: info depth 10 seldepth 12 multipv 1 score cp 12 nodes 1234 nps 5678 hashfull 0 tbhits 0 time 123 pv e2e4 e7e5 ...
-                    const pvMatch = line.match(/\spv\s+(.*)$/);
-                    if (!pvMatch) return [];
-
-                    const pvStr = pvMatch[1].trim();
-                    const tokens = pvStr.split(/\s+/);
-                    const moves = [];
-                    for (let i = 0; i < tokens.length; i++) {
-                        const t = tokens[i];
-                        // Match UCI moves (e.g., e2e4, e7e5, g1f3, a7a8q)
-                        if (/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(t)) {
-                            moves.push(t);
-                        } else {
-                            // Stop if we hit a non-move token (though in UCI PV it should all be moves)
-                            break;
-                        }
-                    }
-                    return moves;
-                }
-
-                let currentAnalysisId = 0;
-
-                async function evalFenDetailed(fen, settings) {
-                    if (!engineWorker || !engineReady) {
-                        const ok = await initStockfish();
-                        if (!ok) return { score: null, best: null };
-                    }
-                    if (engineBusy) {
-                        // If already busy, stop the engine to give the new request priority
-                        if (engineWorker) engineWorker.postMessage('stop');
-                        // Wait a tiny bit for the engine to acknowledge 'stop'
-                        await new Promise(r => setTimeout(r, 50));
-                    }
-                    engineBusy = true;
-                    let lastScore = null;
-                    let best = null;
-                    let lastPv = [];
-                    try {
-                        const timeoutMs = (settings && settings.mode === 'movetime') ? (settings.value + 3000) : 15000;
-                        const res = await new Promise((resolve) => {
-                            let resolved = false;
-                            const safeResolve = (val) => {
-                                if (!resolved) {
-                                    resolved = true;
-                                    resolve(val);
-                                    engineHandler = null;
-                                }
-                            };
-
-                            engineHandler = function (line) {
-                                const s = parseScoreLine(line);
-                                if (s !== null) lastScore = s;
-                                const pv = parsePvMoves(line);
-                                if (pv.length) lastPv = pv;
-                                const bm = line.match(/bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
-                                if (bm) { best = bm[1]; safeResolve({ score: lastScore, best, pv: lastPv }); }
-                            };
-
-                            try {
-                                engineWorker.postMessage('stop');
-                                engineWorker.postMessage('position fen ' + fen);
-                                if (settings && settings.mode === 'depth') {
-                                    engineWorker.postMessage('go depth ' + settings.value);
-                                } else {
-                                    const mt = settings && settings.value ? settings.value : 750;
-                                    engineWorker.postMessage('go movetime ' + mt);
-                                }
-                            } catch (e) {
-                                console.error('Error posting to worker:', e);
-                                safeResolve({ score: null, best: null });
-                                return;
-                            }
-
-                            setTimeout(function () {
-                                if (!resolved) {
-                                    console.warn('Stockfish analysis timed out, resolving with current results');
-                                    safeResolve({ score: lastScore, best, pv: lastPv });
-                                }
-                            }, timeoutMs);
-                        });
-                        return res;
-                    } finally {
-                        engineBusy = false;
-                    }
-                }
-
-                function evalToPercent(s) {
-                    if (s === null) return 0.5;
-                    if (Math.abs(s) >= 98) return s > 0 ? 0.99 : 0.01;
-                    const t = Math.tanh(s / 2);
-                    return (t + 1) / 2;
-                }
-
-                async function updateEvalBarForBoard(b, side) {
-                    if (!evalBar || !evalFill || !evalLabel) return;
-                    const ok = await initStockfish();
-                    if (!ok) { evalLabel.textContent = '-'; return; }
-                    const fen = boardToFEN(b, side);
-                    const det = await evalFenDetailed(fen, getEvalSettings());
-                    const score = det ? det.score : null;
-                    const pct = evalToPercent(score);
-                    const h = Math.round(pct * 100);
-                    evalFill.style.height = h + '%';
-                    if (det.score === null) {
-                        evalLabel.textContent = '-';
-                    } else {
-                        const val = (det.score >= 0 ? '+' : '') + det.score.toFixed(1);
-                        evalLabel.textContent = val;
-                    }
-                }
-
-                function updateEvalBarFromSeries(series, idx) {
-                    if (!evalBar || !evalFill || !evalLabel) return;
-                    if (!series || !series.length) { evalLabel.textContent = '-'; return; }
-                    const i = Math.max(0, Math.min(series.length - 1, idx));
-                    const s = series[i];
-                    const pct = evalToPercent(typeof s === 'number' ? s : 0);
-                    const h = Math.round(pct * 100);
-                    evalFill.style.height = h + '%';
-                    if (typeof s !== 'number') {
-                        evalLabel.textContent = '-';
-                        return;
-                    }
-                    const val = (s >= 0 ? '+' : '') + s.toFixed(1);
-                    evalLabel.textContent = val;
-                }
-
-                async function evaluateWithStockfish(tokens) {
-                    currentAnalysisId++;
-                    const myId = currentAnalysisId;
-
-                    if (message) message.textContent = 'Initializing Stockfish...';
-                    const ok = await initStockfish();
-                    if (!ok) {
-                        if (message) message.textContent = 'Stockfish failed to initialize. Check if backend is running.';
-                        return null;
-                    }
-                    const series = [];
-                    let b = initialBoard();
-                    let side = 'w';
-                    for (let i = 0; i < tokens.length; i++) {
-                        if (myId !== currentAnalysisId) { console.log('Analysis cancelled'); return null; }
-
-                        // Wait for engine to be free
-                        while (engineBusy) {
-                            if (myId !== currentAnalysisId) return null;
-                            await new Promise(r => setTimeout(r, 100));
-                        }
-
-                        if (message) message.textContent = `Analyzing move ${i + 1} / ${tokens.length} with Stockfish...`;
-                        const san = tokens[i];
-                        if (!san) continue;
-                        if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
-                        const applied = applySAN(b, san.replace(/[!?]+/g, ''), side);
-                        if (applied) {
-                            const fen = boardToFEN(b, side === 'w' ? 'b' : 'w');
-                            const det = await evalFenDetailed(fen, getEvalSettings());
-
-                            if (myId !== currentAnalysisId) return null;
-
-                            const score = det ? det.score : null;
-                            const bestMove = det ? det.best : null;
-
-                            // Classify the move
-                            let classification = 'Good';
-                            let prevScore = series.length > 0 ? series[series.length - 1] : 0;
-                            let drop = Math.abs(prevScore - (score || prevScore));
-
-                            if (i < 10 && Math.abs(score || 0) < 0.6) {
-                                classification = 'Book';
-                            } else if (drop < 0.2) {
-                                classification = 'Best';
-                            } else if (drop < 0.5) {
-                                classification = 'Excellent';
-                            } else if (drop < 0.9) {
-                                classification = 'Inaccuracy';
-                            } else if (drop < 2.0) {
-                                classification = 'Mistake';
-                            } else {
-                                classification = 'Blunder';
-                            }
-
-                            if (!window.chessPGN.classifications) window.chessPGN.classifications = [];
-                            window.chessPGN.classifications.push({ label: classification, score: score });
-
-                            if (score === null) { series.push(prevScore); } else { series.push(score); }
-                            side = side === 'w' ? 'b' : 'w';
-                        } else {
-                            console.warn('Failed to apply move:', san, 'at index', i);
-                            if (message) message.textContent = `Analysis stopped: Move ${i + 1} (${san}) is invalid or unsupported.`;
-                            break;
-                        }
-                    }
-                    return series;
-                }
-
-                const PIECE_UNI = {
-                    wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
-                    bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟'
                 };
-
-                const USE_IMAGE_PIECES = true;
-                const PIECE_SRC = {
-                    wK: 'chess_icons/wK.png', wQ: 'chess_icons/wQ.png', wR: 'chess_icons/wR.png', wB: 'chess_icons/wB.png', wN: 'chess_icons/wN.png', wP: 'chess_icons/wP.png',
-                    bK: 'chess_icons/bK.png', bQ: 'chess_icons/bQ.png', bR: 'chess_icons/bR.png', bB: 'chess_icons/bB.png', bN: 'chess_icons/bN.png', bP: 'chess_icons/bP.png'
+                engineHandler = function (line) {
+                    const s = parseScoreLine(line);
+                    if (s !== null) lastScore = s;
+                    const pv = parsePvMoves(line);
+                    if (pv.length) lastPv = pv;
+                    const bm = line.match(/bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
+                    if (bm) { best = bm[1]; safeResolve({ score: lastScore, best, pv: lastPv }); }
                 };
-
-                function algebraicToRC(sq) {
-                    const file = sq.charCodeAt(0) - 97;
-                    const rank = parseInt(sq[1], 10);
-                    const r = 8 - rank;
-                    const c = file;
-                    return { r, c };
-                }
-
-                function emptyBoard() {
-                    return Array.from({ length: 8 }, () => Array(8).fill(null));
-                }
-
-                function initialBoard() {
-                    const b = emptyBoard();
-                    for (let c = 0; c < 8; c++) { b[6][c] = 'wP'; b[1][c] = 'bP'; }
-                    b[7][0] = 'wR'; b[7][7] = 'wR'; b[0][0] = 'bR'; b[0][7] = 'bR';
-                    b[7][1] = 'wN'; b[7][6] = 'wN'; b[0][1] = 'bN'; b[0][6] = 'bN';
-                    b[7][2] = 'wB'; b[7][5] = 'wB'; b[0][2] = 'bB'; b[0][5] = 'bB';
-                    b[7][3] = 'wQ'; b[7][4] = 'wK'; b[0][3] = 'bQ'; b[0][4] = 'bK';
-                    return b;
-                }
-
-                function renderBoard(b) {
-                    if (!boardEl) return;
-                    boardEl.innerHTML = '';
-                    for (let r = 0; r < 8; r++) {
-                        for (let c = 0; c < 8; c++) {
-                            const sq = document.createElement('div');
-                            sq.className = 'square ' + (((r + c) % 2 === 0) ? 'light' : 'dark');
-                            const p = b[r][c];
-                            if (p) {
-                                if (USE_IMAGE_PIECES && PIECE_SRC[p]) {
-                                    const img = document.createElement('img');
-                                    img.className = 'piece-img';
-                                    img.src = PIECE_SRC[p];
-                                    img.alt = p;
-                                    img.onerror = function () {
-                                        try { console.warn('Piece image failed to load:', p, 'src=', img.src); } catch (_) { }
-                                        if (img.parentNode === sq) sq.removeChild(img);
-                                        const span = document.createElement('span');
-                                        span.className = 'piece-symbol ' + (p[0] === 'w' ? 'piece-white' : 'piece-black');
-                                        span.textContent = PIECE_UNI[p] || '';
-                                        sq.appendChild(span);
-                                    };
-                                    sq.appendChild(img);
-                                } else {
-                                    const span = document.createElement('span');
-                                    span.className = 'piece-symbol ' + (p[0] === 'w' ? 'piece-white' : 'piece-black');
-                                    span.textContent = PIECE_UNI[p] || '';
-                                    sq.appendChild(span);
-                                }
-                            }
-                            boardEl.appendChild(sq);
-                        }
-                    }
-                    try {
-                        if (evalBar && boardEl && boardEl.offsetHeight) {
-                            evalBar.style.height = boardEl.offsetHeight + 'px';
-                        }
-                    } catch (_) { }
-                }
-
-                function pathClear(b, r, c, tr, tc) {
-                    const dr = Math.sign(tr - r);
-                    const dc = Math.sign(tc - c);
-                    let rr = r + dr, cc = c + dc;
-                    while (rr !== tr || cc !== tc) {
-                        if (b[rr][cc]) return false;
-                        rr += dr; cc += dc;
-                    }
-                    return true;
-                }
-
-                function candidatesFor(b, side, piece, target, hint) {
-                    const res = [];
-                    const { r: tr, c: tc } = algebraicToRC(target);
-                    const isWhite = side === 'w';
-                    for (let r = 0; r < 8; r++) {
-                        for (let c = 0; c < 8; c++) {
-                            const p = b[r][c];
-                            if (!p || p[0] !== side) continue;
-                            if (p[1] !== piece) continue;
-                            if (hint) {
-                                if (/^[a-h]$/.test(hint) && (c !== hint.charCodeAt(0) - 97)) continue;
-                                if (/^[1-8]$/.test(hint) && ((8 - r) !== parseInt(hint, 10))) continue;
-                            }
-                            if (piece === 'N') {
-                                const d = Math.abs(r - tr) * 10 + Math.abs(c - tc);
-                                if ((d === 12 || d === 21)) res.push({ r, c });
-                            } else if (piece === 'K') {
-                                if (Math.max(Math.abs(r - tr), Math.abs(c - tc)) === 1) res.push({ r, c });
-                            } else if (piece === 'B') {
-                                if (Math.abs(r - tr) === Math.abs(c - tc) && pathClear(b, r, c, tr, tc)) res.push({ r, c });
-                            } else if (piece === 'R') {
-                                if ((r === tr || c === tc) && pathClear(b, r, c, tr, tc)) res.push({ r, c });
-                            } else if (piece === 'Q') {
-                                if ((r === tr || c === tc || Math.abs(r - tr) === Math.abs(c - tc)) && pathClear(b, r, c, tr, tc)) res.push({ r, c });
-                            } else if (piece === 'P') {
-                                const dir = isWhite ? -1 : 1;
-                                const startRow = isWhite ? 6 : 1;
-
-                                // In SAN, a pawn move is ONLY diagonal if it's a capture, 
-                                // and captures for pawns ALWAYS include the starting file as a hint (e.g., "exf4" or "ef").
-                                const isCaptureAttempt = !!(hint && /^[a-h]$/.test(hint));
-
-                                if (isCaptureAttempt) {
-                                    // Diagonal capture (including potential en passant)
-                                    if (tr - r === dir && Math.abs(tc - c) === 1) res.push({ r, c });
-                                } else {
-                                    // Regular move must be vertical
-                                    if (tc === c) {
-                                        if (tr - r === dir && !b[tr][tc]) res.push({ r, c });
-                                        // Double square move
-                                        if (tr - r === 2 * dir && r === startRow && !b[r + dir][c] && !b[tr][tc]) res.push({ r, c });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    return res;
-                }
-
-                function applySAN(b, san, side) {
-                    san = san.replace(/[+#]+/g, '');
-                    if (/^O-O(-O)?$/.test(san)) {
-                        if (side === 'w') {
-                            if (san === 'O-O') { b[7][6] = 'wK'; b[7][5] = 'wR'; b[7][4] = null; b[7][7] = null; return true; }
-                            if (san === 'O-O-O') { b[7][2] = 'wK'; b[7][3] = 'wR'; b[7][4] = null; b[7][0] = null; return true; }
-                        } else {
-                            if (san === 'O-O') { b[0][6] = 'bK'; b[0][5] = 'bR'; b[0][4] = null; b[0][7] = null; return true; }
-                            if (san === 'O-O-O') { b[0][2] = 'bK'; b[0][3] = 'bR'; b[0][4] = null; b[0][0] = null; return true; }
-                        }
-                        return false;
-                    }
-                    const m = san.match(/^(?:([NBRQK])|)([a-h1-8]?)(x?)([a-h][1-8])(=?([QRNB]))?/);
-                    if (!m) return false;
-                    const piece = m[1] ? m[1] : 'P';
-                    const hint = m[2] || null;
-                    const target = m[4];
-                    const promo = m[6] || null;
-                    const { r: tr, c: tc } = algebraicToRC(target);
-                    const cands = candidatesFor(b, side, piece, target, hint);
-                    if (cands.length === 0) return false;
-                    const from = cands[0];
-                    const moving = piece === 'P' ? (side + 'P') : (side + piece);
-
-                    // En passant detection
-                    if (piece === 'P' && Math.abs(tc - from.c) === 1 && !b[tr][tc]) {
-                        const victimRow = side === 'w' ? tr + 1 : tr - 1;
-                        b[victimRow][tc] = null;
-                    }
-
-                    b[tr][tc] = promo ? (side + promo) : moving;
-                    b[from.r][from.c] = null;
-                    return true;
-                }
-
-                let currentIndex = 0;
-                let currentMoves = [];
-                function computeBoardToIndex(index) {
-                    let b = initialBoard();
-                    let side = 'w';
-                    let applied = 0;
-                    for (let i = 0; i < index; i++) {
-                        const san = currentMoves[i];
-                        if (!san) continue;
-                        if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
-                        const ok = applySAN(b, san.replace(/[!?]+/g, ''), side);
-                        if (ok) { applied++; side = side === 'w' ? 'b' : 'w'; }
-                    }
-                    return { b, side };
-                }
-
-                function applyUci(b, uci, side) {
-                    const from = uci.slice(0, 2);
-                    const to = uci.slice(2, 4);
-                    const promo = uci.length > 4 ? uci[4] : null;
-                    const f = algebraicToRC(from);
-                    const t = algebraicToRC(to);
-                    const moving = b[f.r][f.c];
-                    if (!moving) return false;
-
-                    const isWhite = moving[0] === 'w';
-                    const isPawn = moving[1] === 'P';
-                    const isK = moving[1] === 'K';
-
-                    // En passant detection: pawn moving diagonally to an empty square
-                    if (isPawn && f.c !== t.c && !b[t.r][t.c]) {
-                        const victimRow = isWhite ? t.r + 1 : t.r - 1;
-                        b[victimRow][t.c] = null;
-                    }
-
-                    const castleW = isK && from === 'e1' && (to === 'g1' || to === 'c1');
-                    const castleB = isK && from === 'e8' && (to === 'g8' || to === 'c8');
-                    b[t.r][t.c] = promo ? (side + promo.toUpperCase()) : moving;
-                    b[f.r][f.c] = null;
-                    if (castleW) {
-                        if (to === 'g1') { b[7][5] = 'wR'; b[7][7] = null; }
-                        if (to === 'c1') { b[7][3] = 'wR'; b[7][0] = null; }
-                    }
-                    if (castleB) {
-                        if (to === 'g8') { b[0][5] = 'bR'; b[0][7] = null; }
-                        if (to === 'c8') { b[0][3] = 'bR'; b[0][0] = null; }
-                    }
-                    return true;
-                }
-
-                let analysisPV = [];
-                let analysisIndex = 0;
-                let analysisBase = null;
-
-                function renderPvList(pv) {
-                    if (!pvList) return;
-                    pvList.innerHTML = '';
-                    if (!pv || pv.length === 0) {
-                        const li = document.createElement('li');
-                        li.textContent = 'No moves found';
-                        li.style.color = 'var(--muted)';
-                        li.style.listStyle = 'none';
-                        pvList.appendChild(li);
-                        return;
-                    }
-                    for (let i = 0; i < pv.length; i++) {
-                        const li = document.createElement('li');
-                        li.textContent = pv[i];
-                        if (i === analysisIndex) {
-                            li.style.background = 'var(--accent)';
-                            li.style.color = 'white';
-                            li.style.borderRadius = '4px';
-                            li.style.padding = '2px 6px';
-                        }
-                        pvList.appendChild(li);
-                    }
-                }
-
-                async function analyzeCurrentPosition() {
-                    const idx = Math.max(0, Math.min(currentMoves.length, currentIndex));
-                    const st = computeBoardToIndex(idx);
-                    analysisBase = { b: st.b, side: st.side };
-                    if (pvInfo) pvInfo.textContent = 'Analyzing...';
-                    const det = await evalFenDetailed(boardToFEN(st.b, st.side), getEvalSettings());
-                    analysisPV = Array.isArray(det.pv) ? det.pv.slice(0, 16) : [];
-                    analysisIndex = 0;
-                    renderPvList(analysisPV);
-                    if (pvInfo) {
-                        if (det && typeof det.score === 'number') {
-                            const val = (det.score >= 0 ? '+' : '') + det.score.toFixed(2);
-                            pvInfo.textContent = 'Score: ' + val;
-                        } else {
-                            pvInfo.textContent = 'Score: -';
-                        }
-                    }
-                    renderBoard(st.b);
-                    updateEvalBarForBoard(st.b, st.side);
-                }
-
-                function updateClassification(index) {
-                    if (!classificationTag || !classificationDetail) return;
-                    if (!window.chessPGN || !window.chessPGN.classifications) {
-                        classificationTag.textContent = '-';
-                        classificationDetail.textContent = 'Analyze game to see quality';
-                        return;
-                    }
-
-                    const data = window.chessPGN.classifications[index - 1];
-                    if (!data) {
-                        classificationTag.textContent = '-';
-                        classificationDetail.textContent = 'Start of game';
-                        return;
-                    }
-
-                    classificationTag.textContent = data.label;
-                    classificationTag.className = 'classification-tag ' + data.label.toLowerCase();
-                    classificationDetail.textContent = `Evaluation: ${data.score >= 0 ? '+' : ''}${data.score?.toFixed(1) || '-'}`;
-                }
-
-                function stepPv(delta) {
-                    if (!analysisBase || !analysisPV || analysisPV.length === 0) return;
-                    analysisIndex = Math.max(0, Math.min(analysisPV.length, analysisIndex + delta));
-                    let b = JSON.parse(JSON.stringify(analysisBase.b));
-                    let side = analysisBase.side;
-                    for (let i = 0; i < analysisIndex; i++) {
-                        const uci = analysisPV[i];
-                        applyUci(b, uci, side);
-                        side = side === 'w' ? 'b' : 'w';
-                    }
-                    renderPvList(analysisPV);
-                    renderBoard(b);
-                    updateEvalBarForBoard(b, side);
-                }
-                function rebuildTo(index) {
-                    let b = initialBoard();
-                    let side = 'w';
-                    let applied = 0;
-                    for (let i = 0; i < index; i++) {
-                        const san = currentMoves[i];
-                        if (!san) continue;
-                        if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
-                        const ok = applySAN(b, san.replace(/[!?]+/g, ''), side);
-                        if (ok) { applied++; side = side === 'w' ? 'b' : 'w'; }
-                    }
-                    renderBoard(b);
-                    if (window.chessPGN && Array.isArray(window.chessPGN.evals)) {
-                        drawEval(window.chessPGN.evals, applied);
-                    }
-
-                    updateClassification(applied);
-
-                    if (moveStatus) moveStatus.textContent = 'Move ' + applied + ' / ' + currentMoves.length;
-                    const toMove = applied % 2 === 0 ? 'w' : 'b';
-                    if (window.chessPGN && Array.isArray(window.chessPGN.evals) && window.chessPGN.evals.length) {
-                        updateEvalBarFromSeries(window.chessPGN.evals, Math.max(0, applied - 1));
+                try {
+                    engineWorker.postMessage('stop');
+                    engineWorker.postMessage('position fen ' + fen);
+                    if (settings && settings.mode === 'depth') {
+                        engineWorker.postMessage('go depth ' + settings.value);
                     } else {
-                        updateEvalBarForBoard(b, toMove);
+                        const mt = settings && settings.value ? settings.value : 750;
+                        engineWorker.postMessage('go movetime ' + mt);
                     }
-                    return b;
+                } catch (e) {
+                    console.error('Error posting to worker:', e);
+                    safeResolve({ score: null, best: null });
+                    return;
                 }
-
-                function initBoard() {
-                    if (boardSection) boardSection.hidden = false;
-                    rebuildTo(currentIndex);
-                    if (firstBtn) firstBtn.onclick = function () { currentIndex = 0; rebuildTo(currentIndex); };
-                    if (prevBtn) prevBtn.onclick = function () { currentIndex = Math.max(0, currentIndex - 1); rebuildTo(currentIndex); };
-                    if (nextBtn) nextBtn.onclick = function () { currentIndex = Math.min(currentMoves.length, currentIndex + 1); rebuildTo(currentIndex); };
-                    if (lastBtn) lastBtn.onclick = function () { currentIndex = currentMoves.length; rebuildTo(currentIndex); };
-                }
-
-                button.addEventListener('click', async function () {
-                    try {
-                        const raw = input.value || '';
-                        const headers = parseHeaders(raw);
-                        const moves = extractMoves(raw);
-                        let evals = extractEvalSeries(raw);
-                        if (moves.length === 0) {
-                            if (message) message.textContent = 'No moves found';
-                            return;
-                        }
-                        if (message) message.textContent = 'Loaded ' + moves.length + ' moves';
-                        window.chessPGN = { raw: raw, headers: headers, moves: moves, evals: evals };
-                        if (metaWhite) metaWhite.textContent = headers.White || '-';
-                        if (metaBlack) metaBlack.textContent = headers.Black || '-';
-                        if (metaResult) metaResult.textContent = headers.Result || '-';
-                        if (metaEvent) metaEvent.textContent = headers.Event || '-';
-                        if (metaDate) metaDate.textContent = headers.Date || headers.UTCDate || '-';
-                        if (metadataCard) metadataCard.hidden = false;
-                        if (!evals || evals.length === 0) {
-                            const msgEl = message;
-                            if (msgEl) msgEl.textContent = 'Analyzing with Stockfish...';
-                            try {
-                                const sfSeries = await evaluateWithStockfish(moves);
-                                if (sfSeries && sfSeries.length) {
-                                    evals = sfSeries;
-                                    if (msgEl) msgEl.textContent = 'Analysis complete';
-                                } else {
-                                    evals = [];
-                                    if (msgEl) msgEl.textContent = 'Analysis failed - engine error';
-                                }
-                            } catch (e) {
-                                evals = [];
-                                if (msgEl) msgEl.textContent = 'Error: ' + e.message;
-                            }
-                        }
-                        window.chessPGN.evals = evals;
-                        drawEval(evals, 0);
-                        updateEvalBarFromSeries(evals, 0);
-                        currentMoves = moves;
-                        currentIndex = 0;
-                        initBoard();
-                    } catch (err) {
-                        if (message) message.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+                setTimeout(function () {
+                    if (!resolved) {
+                        console.warn('Stockfish analysis timed out, resolving with current results');
+                        safeResolve({ score: lastScore, best, pv: lastPv });
                     }
-                });
+                }, timeoutMs);
             });
+            return res;
+        } finally {
+            engineBusy = false;
+        }
+    }
+
+    function evalToPercent(s) {
+        if (s === null) return 0.5;
+        if (Math.abs(s) >= 98) return s > 0 ? 0.99 : 0.01;
+        const t = Math.tanh(s / 2);
+        return (t + 1) / 2;
+    }
+
+    async function updateEvalBarForBoard(b, side) {
+        if (!evalBar || !evalFill || !evalLabel) return;
+        const ok = await initStockfish();
+        if (!ok) { evalLabel.textContent = '-'; return; }
+        const fen = boardToFEN(b, side);
+        const det = await evalFenDetailed(fen, getEvalSettings());
+        const score = det ? det.score : null;
+        const pct = evalToPercent(score);
+        const h = Math.round(pct * 100);
+        evalFill.style.height = h + '%';
+        if (score === null) {
+            evalLabel.textContent = '-';
+        } else {
+            const val = (score >= 0 ? '+' : '') + score.toFixed(1);
+            evalLabel.textContent = val;
+        }
+    }
+
+    function updateEvalBarFromSeries(series, idx) {
+        if (!evalBar || !evalFill || !evalLabel) return;
+        if (!series || !series.length) { evalLabel.textContent = '-'; return; }
+        const i = Math.max(0, Math.min(series.length - 1, idx));
+        const s = series[i];
+        const pct = evalToPercent(typeof s === 'number' ? s : 0);
+        const h = Math.round(pct * 100);
+        evalFill.style.height = h + '%';
+        if (typeof s !== 'number') {
+            evalLabel.textContent = '-';
+            return;
+        }
+        const val = (s >= 0 ? '+' : '') + s.toFixed(1);
+        evalLabel.textContent = val;
+    }
+
+    async function evaluateWithStockfish(tokens) {
+        currentAnalysisId++;
+        const myId = currentAnalysisId;
+        if (message) message.textContent = 'Initializing Stockfish...';
+        const ok = await initStockfish();
+        if (!ok) {
+            if (message) message.textContent = 'Stockfish failed to initialize. Check if backend is running.';
+            return null;
+        }
+        const series = [];
+        let b = initialBoard();
+        let side = 'w';
+        for (let i = 0; i < tokens.length; i++) {
+            if (myId !== currentAnalysisId) { console.log('Analysis cancelled'); return null; }
+            while (engineBusy) {
+                if (myId !== currentAnalysisId) return null;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            if (message) message.textContent = `Analyzing move ${i + 1} / ${tokens.length} with Stockfish...`;
+            const san = tokens[i];
+            if (!san) continue;
+            if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
+            const applied = applySAN(b, san.replace(/[!?]+/g, ''), side);
+            if (applied) {
+                const fen = boardToFEN(b, side === 'w' ? 'b' : 'w');
+                const det = await evalFenDetailed(fen, getEvalSettings());
+                if (myId !== currentAnalysisId) return null;
+                const score = det ? det.score : null;
+                let classification = 'Good';
+                let prevScore = series.length > 0 ? series[series.length - 1] : 0;
+                let drop = Math.abs(prevScore - (score || prevScore));
+                if (i < 10 && Math.abs(score || 0) < 0.6) {
+                    classification = 'Book';
+                } else if (drop < 0.2) {
+                    classification = 'Best';
+                } else if (drop < 0.5) {
+                    classification = 'Excellent';
+                } else if (drop < 0.9) {
+                    classification = 'Inaccuracy';
+                } else if (drop < 2.0) {
+                    classification = 'Mistake';
+                } else {
+                    classification = 'Blunder';
+                }
+                if (!window.chessPGN.classifications) window.chessPGN.classifications = [];
+                window.chessPGN.classifications.push({ label: classification, score: score });
+                if (score === null) { series.push(prevScore); } else { series.push(score); }
+                side = side === 'w' ? 'b' : 'w';
+            } else {
+                console.warn('Failed to apply move:', san, 'at index', i);
+                break;
+            }
+        }
+        return series;
+    }
+
+    const PIECE_UNI = {
+        wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
+        bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟'
+    };
+
+    const USE_IMAGE_PIECES = true;
+    const PIECE_SRC = {
+        wK: 'chess_icons/wK.png', wQ: 'chess_icons/wQ.png', wR: 'chess_icons/wR.png', wB: 'chess_icons/wB.png', wN: 'chess_icons/wN.png', wP: 'chess_icons/wP.png',
+        bK: 'chess_icons/bK.png', bQ: 'chess_icons/bQ.png', bR: 'chess_icons/bR.png', bB: 'chess_icons/bB.png', bN: 'chess_icons/bN.png', bP: 'chess_icons/bP.png'
+    };
+
+    function algebraicToRC(sq) {
+        const file = sq.charCodeAt(0) - 97;
+        const rank = parseInt(sq[1], 10);
+        const r = 8 - rank;
+        const c = file;
+        return { r, c };
+    }
+
+    function emptyBoard() {
+        return Array.from({ length: 8 }, () => Array(8).fill(null));
+    }
+
+    function initialBoard() {
+        const b = emptyBoard();
+        for (let c = 0; c < 8; c++) { b[6][c] = 'wP'; b[1][c] = 'bP'; }
+        b[7][0] = 'wR'; b[7][7] = 'wR'; b[0][0] = 'bR'; b[0][7] = 'bR';
+        b[7][1] = 'wN'; b[7][6] = 'wN'; b[0][1] = 'bN'; b[0][6] = 'bN';
+        b[7][2] = 'wB'; b[7][5] = 'wB'; b[0][2] = 'bB'; b[0][5] = 'bB';
+        b[7][3] = 'wQ'; b[7][4] = 'wK'; b[0][3] = 'bQ'; b[0][4] = 'bK';
+        return b;
+    }
+
+    function renderBoard(b) {
+        if (!boardEl) return;
+        boardEl.innerHTML = '';
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const sq = document.createElement('div');
+                sq.className = 'square ' + (((r + c) % 2 === 0) ? 'light' : 'dark');
+                const p = b[r][c];
+                if (p) {
+                    if (USE_IMAGE_PIECES && PIECE_SRC[p]) {
+                        const img = document.createElement('img');
+                        img.className = 'piece-img';
+                        img.src = PIECE_SRC[p];
+                        img.alt = p;
+                        img.onerror = function () {
+                            if (img.parentNode === sq) sq.removeChild(img);
+                            const span = document.createElement('span');
+                            span.className = 'piece-symbol ' + (p[0] === 'w' ? 'piece-white' : 'piece-black');
+                            span.textContent = PIECE_UNI[p] || '';
+                            sq.appendChild(span);
+                        };
+                        sq.appendChild(img);
+                    } else {
+                        const span = document.createElement('span');
+                        span.className = 'piece-symbol ' + (p[0] === 'w' ? 'piece-white' : 'piece-black');
+                        span.textContent = PIECE_UNI[p] || '';
+                        sq.appendChild(span);
+                    }
+                }
+                boardEl.appendChild(sq);
+            }
+        }
+        try {
+            if (evalBar && boardEl && boardEl.offsetHeight) {
+                evalBar.style.height = boardEl.offsetHeight + 'px';
+            }
+        } catch (_) { }
+    }
+
+    function pathClear(b, r, c, tr, tc) {
+        const dr = Math.sign(tr - r);
+        const dc = Math.sign(tc - c);
+        let rr = r + dr, cc = c + dc;
+        while (rr !== tr || cc !== tc) {
+            if (b[rr][cc]) return false;
+            rr += dr; cc += dc;
+        }
+        return true;
+    }
+
+    function candidatesFor(b, side, piece, target, hint) {
+        const res = [];
+        const { r: tr, c: tc } = algebraicToRC(target);
+        const isWhite = side === 'w';
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = b[r][c];
+                if (!p || p[0] !== side) continue;
+                if (p[1] !== piece) continue;
+                if (hint) {
+                    if (/^[a-h]$/.test(hint) && (c !== hint.charCodeAt(0) - 97)) continue;
+                    if (/^[1-8]$/.test(hint) && ((8 - r) !== parseInt(hint, 10))) continue;
+                }
+                if (piece === 'N') {
+                    const d = Math.abs(r - tr) * 10 + Math.abs(c - tc);
+                    if ((d === 12 || d === 21)) res.push({ r, c });
+                } else if (piece === 'K') {
+                    if (Math.max(Math.abs(r - tr), Math.abs(c - tc)) === 1) res.push({ r, c });
+                } else if (piece === 'B') {
+                    if (Math.abs(r - tr) === Math.abs(c - tc) && pathClear(b, r, c, tr, tc)) res.push({ r, c });
+                } else if (piece === 'R') {
+                    if ((r === tr || c === tc) && pathClear(b, r, c, tr, tc)) res.push({ r, c });
+                } else if (piece === 'Q') {
+                    if ((r === tr || c === tc || Math.abs(r - tr) === Math.abs(c - tc)) && pathClear(b, r, c, tr, tc)) res.push({ r, c });
+                } else if (piece === 'P') {
+                    const dir = isWhite ? -1 : 1;
+                    const startRow = isWhite ? 6 : 1;
+                    const isCaptureAttempt = !!(hint && /^[a-h]$/.test(hint));
+                    if (isCaptureAttempt) {
+                        if (tr - r === dir && Math.abs(tc - c) === 1) res.push({ r, c });
+                    } else {
+                        if (tc === c) {
+                            if (tr - r === dir && !b[tr][tc]) res.push({ r, c });
+                            if (tr - r === 2 * dir && r === startRow && !b[r + dir][c] && !b[tr][tc]) res.push({ r, c });
+                        }
+                    }
+                }
+            }
+        }
+        return res;
+    }
+
+    function applySAN(b, san, side) {
+        san = san.replace(/[+#]+/g, '');
+        if (/^O-O(-O)?$/.test(san)) {
+            if (side === 'w') {
+                if (san === 'O-O') { b[7][6] = 'wK'; b[7][5] = 'wR'; b[7][4] = null; b[7][7] = null; return true; }
+                if (san === 'O-O-O') { b[7][2] = 'wK'; b[7][3] = 'wR'; b[7][4] = null; b[7][0] = null; return true; }
+            } else {
+                if (san === 'O-O') { b[0][6] = 'bK'; b[0][5] = 'bR'; b[0][4] = null; b[0][7] = null; return true; }
+                if (san === 'O-O-O') { b[0][2] = 'bK'; b[0][3] = 'bR'; b[0][4] = null; b[0][0] = null; return true; }
+            }
+            return false;
+        }
+        const m = san.match(/^(?:([NBRQK])|)([a-h1-8]?)(x?)([a-h][1-8])(=?([QRNB]))?/);
+        if (!m) return false;
+        const piece = m[1] ? m[1] : 'P';
+        const hint = m[2] || null;
+        const target = m[4];
+        const promo = m[6] || null;
+        const cands = candidatesFor(b, side, piece, target, hint);
+        if (cands.length === 0) return false;
+        const from = cands[0];
+        const moving = piece === 'P' ? (side + 'P') : (side + piece);
+        const { r: tr, c: tc } = algebraicToRC(target);
+        if (piece === 'P' && Math.abs(tc - from.c) === 1 && !b[tr][tc]) {
+            const victimRow = side === 'w' ? tr + 1 : tr - 1;
+            b[victimRow][tc] = null;
+        }
+        b[tr][tc] = promo ? (side + promo) : moving;
+        b[from.r][from.c] = null;
+        return true;
+    }
+
+    let currentIndex = 0;
+    let currentMoves = [];
+
+    function computeBoardToIndex(index) {
+        let b = initialBoard();
+        let side = 'w';
+        let applied = 0;
+        for (let i = 0; i < index; i++) {
+            const san = currentMoves[i];
+            if (!san) continue;
+            if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
+            const ok = applySAN(b, san.replace(/[!?]+/g, ''), side);
+            if (ok) { applied++; side = side === 'w' ? 'b' : 'w'; }
+        }
+        return { b, side };
+    }
+
+    function applyUci(b, uci, side) {
+        const from = uci.slice(0, 2);
+        const to = uci.slice(2, 4);
+        const promo = uci.length > 4 ? uci[4] : null;
+        const f = algebraicToRC(from);
+        const t = algebraicToRC(to);
+        const moving = b[f.r][f.c];
+        if (!moving) return false;
+        const isWhite = moving[0] === 'w';
+        const isPawn = moving[1] === 'P';
+        const isK = moving[1] === 'K';
+        if (isPawn && f.c !== t.c && !b[t.r][t.c]) {
+            const victimRow = isWhite ? t.r + 1 : t.r - 1;
+            b[victimRow][t.c] = null;
+        }
+        const castleW = isK && from === 'e1' && (to === 'g1' || to === 'c1');
+        const castleB = isK && from === 'e8' && (to === 'g8' || to === 'c8');
+        b[t.r][t.c] = promo ? (side + promo.toUpperCase()) : moving;
+        b[f.r][f.c] = null;
+        if (castleW) {
+            if (to === 'g1') { b[7][5] = 'wR'; b[7][7] = null; }
+            if (to === 'c1') { b[7][3] = 'wR'; b[7][0] = null; }
+        }
+        if (castleB) {
+            if (to === 'g8') { b[0][5] = 'bR'; b[0][7] = null; }
+            if (to === 'c8') { b[0][3] = 'bR'; b[0][0] = null; }
+        }
+        return true;
+    }
+
+    let analysisPV = [];
+    let analysisIndex = 0;
+    let analysisBase = null;
+
+    function renderPvList(pv) {
+        if (!pvList) return;
+        pvList.innerHTML = '';
+        if (!pv || pv.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No moves found';
+            pvList.appendChild(li);
+            return;
+        }
+        for (let i = 0; i < pv.length; i++) {
+            const li = document.createElement('li');
+            li.textContent = pv[i];
+            if (i === analysisIndex) {
+                li.style.background = 'var(--accent)';
+                li.style.color = 'white';
+            }
+            pvList.appendChild(li);
+        }
+    }
+
+    async function analyzeCurrentPosition() {
+        const idx = Math.max(0, Math.min(currentMoves.length, currentIndex));
+        const st = computeBoardToIndex(idx);
+        analysisBase = { b: st.b, side: st.side };
+        if (pvInfo) pvInfo.textContent = 'Analyzing...';
+        const det = await evalFenDetailed(boardToFEN(st.b, st.side), getEvalSettings());
+        analysisPV = Array.isArray(det.pv) ? det.pv.slice(0, 16) : [];
+        analysisIndex = 0;
+        renderPvList(analysisPV);
+        if (pvInfo) {
+            if (det && typeof det.score === 'number') {
+                const val = (det.score >= 0 ? '+' : '') + det.score.toFixed(2);
+                pvInfo.textContent = 'Score: ' + val;
+            } else {
+                pvInfo.textContent = 'Score: -';
+            }
+        }
+        renderBoard(st.b);
+        updateEvalBarForBoard(st.b, st.side);
+    }
+
+    function updateClassification(index) {
+        if (!classificationTag || !classificationDetail) return;
+        if (!window.chessPGN || !window.chessPGN.classifications) {
+            classificationTag.textContent = '-';
+            classificationDetail.textContent = 'Analyze game to see quality';
+            return;
+        }
+        const data = window.chessPGN.classifications[index - 1];
+        if (!data) {
+            classificationTag.textContent = '-';
+            classificationDetail.textContent = 'Start of game';
+            return;
+        }
+        classificationTag.textContent = data.label;
+        classificationTag.className = 'classification-tag ' + data.label.toLowerCase();
+        classificationDetail.textContent = `Evaluation: ${data.score >= 0 ? '+' : ''}${data.score?.toFixed(1) || '-'}`;
+    }
+
+    function stepPv(delta) {
+        if (!analysisBase || !analysisPV || analysisPV.length === 0) return;
+        analysisIndex = Math.max(0, Math.min(analysisPV.length, analysisIndex + delta));
+        let b = JSON.parse(JSON.stringify(analysisBase.b));
+        let side = analysisBase.side;
+        for (let i = 0; i < analysisIndex; i++) {
+            const uci = analysisPV[i];
+            applyUci(b, uci, side);
+            side = side === 'w' ? 'b' : 'w';
+        }
+        renderPvList(analysisPV);
+        renderBoard(b);
+        updateEvalBarForBoard(b, side);
+    }
+
+    function rebuildTo(index) {
+        let b = initialBoard();
+        let side = 'w';
+        let applied = 0;
+        for (let i = 0; i < index; i++) {
+            const san = currentMoves[i];
+            if (!san) continue;
+            if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
+            const ok = applySAN(b, san.replace(/[!?]+/g, ''), side);
+            if (ok) { applied++; side = side === 'w' ? 'b' : 'w'; }
+        }
+        renderBoard(b);
+        if (window.chessPGN && Array.isArray(window.chessPGN.evals)) {
+            drawEval(window.chessPGN.evals, applied);
+        }
+        updateClassification(applied);
+        if (moveStatus) moveStatus.textContent = 'Move ' + applied + ' / ' + currentMoves.length;
+        const toMove = applied % 2 === 0 ? 'w' : 'b';
+        if (window.chessPGN && Array.isArray(window.chessPGN.evals) && window.chessPGN.evals.length) {
+            updateEvalBarFromSeries(window.chessPGN.evals, Math.max(0, applied - 1));
+        } else {
+            updateEvalBarForBoard(b, toMove);
+        }
+        return b;
+    }
+
+    function initBoard() {
+        if (boardSection) boardSection.hidden = false;
+        rebuildTo(currentIndex);
+        if (firstBtn) firstBtn.onclick = function () { currentIndex = 0; rebuildTo(currentIndex); };
+        if (prevBtn) prevBtn.onclick = function () { currentIndex = Math.max(0, currentIndex - 1); rebuildTo(currentIndex); };
+        if (nextBtn) nextBtn.onclick = function () { currentIndex = Math.min(currentMoves.length, currentIndex + 1); rebuildTo(currentIndex); };
+        if (lastBtn) lastBtn.onclick = function () { currentIndex = currentMoves.length; rebuildTo(currentIndex); };
+    }
+
+    button.addEventListener('click', async function () {
+        try {
+            const raw = input.value || '';
+            const headers = parseHeaders(raw);
+            const moves = extractMoves(raw);
+            let evals = extractEvalSeries(raw);
+            if (moves.length === 0) {
+                if (message) message.textContent = 'No moves found';
+                return;
+            }
+            if (message) message.textContent = 'Loaded ' + moves.length + ' moves';
+            window.chessPGN = { raw: raw, headers: headers, moves: moves, evals: evals };
+            if (metaWhite) metaWhite.textContent = headers.White || '-';
+            if (metaBlack) metaBlack.textContent = headers.Black || '-';
+            if (metaResult) metaResult.textContent = headers.Result || '-';
+            if (metaEvent) metaEvent.textContent = headers.Event || '-';
+            if (metaDate) metaDate.textContent = headers.Date || headers.UTCDate || '-';
+            if (metadataCard) metadataCard.hidden = false;
+            if (!evals || evals.length === 0) {
+                const msgEl = message;
+                if (msgEl) msgEl.textContent = 'Analyzing with Stockfish...';
+                try {
+                    const sfSeries = await evaluateWithStockfish(moves);
+                    if (sfSeries && sfSeries.length) {
+                        evals = sfSeries;
+                        if (msgEl) msgEl.textContent = 'Analysis complete';
+                    } else {
+                        evals = [];
+                        if (msgEl) msgEl.textContent = 'Analysis failed - engine error';
+                    }
+                } catch (e) {
+                    evals = [];
+                    if (msgEl) msgEl.textContent = 'Error: ' + e.message;
+                }
+            }
+            window.chessPGN.evals = evals;
+            drawEval(evals, 0);
+            updateEvalBarFromSeries(evals, 0);
+            currentMoves = moves;
+            currentIndex = 0;
+            initBoard();
+        } catch (err) {
+            if (message) message.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+        }
+    });
+});
