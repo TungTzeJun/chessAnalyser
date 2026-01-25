@@ -21,8 +21,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const nextBtn = document.getElementById('nextMove');
     const lastBtn = document.getElementById('lastMove');
     const moveStatus = document.getElementById('moveStatus');
-    const pvList = document.getElementById('pvList');
-    const pvInfo = document.getElementById('pvInfo');
 
     if (!input || !button) return;
 
@@ -632,81 +630,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return { b, side };
     }
 
-    function applyUci(b, uci, side) {
-        const from = uci.slice(0, 2);
-        const to = uci.slice(2, 4);
-        const promo = uci.length > 4 ? uci[4] : null;
-        const f = algebraicToRC(from);
-        const t = algebraicToRC(to);
-        const moving = b[f.r][f.c];
-        if (!moving) return false;
-        const isWhite = moving[0] === 'w';
-        const isPawn = moving[1] === 'P';
-        const isK = moving[1] === 'K';
-        if (isPawn && f.c !== t.c && !b[t.r][t.c]) {
-            const victimRow = isWhite ? t.r + 1 : t.r - 1;
-            b[victimRow][t.c] = null;
-        }
-        const castleW = isK && from === 'e1' && (to === 'g1' || to === 'c1');
-        const castleB = isK && from === 'e8' && (to === 'g8' || to === 'c8');
-        b[t.r][t.c] = promo ? (side + promo.toUpperCase()) : moving;
-        b[f.r][f.c] = null;
-        if (castleW) {
-            if (to === 'g1') { b[7][5] = 'wR'; b[7][7] = null; }
-            if (to === 'c1') { b[7][3] = 'wR'; b[7][0] = null; }
-        }
-        if (castleB) {
-            if (to === 'g8') { b[0][5] = 'bR'; b[0][7] = null; }
-            if (to === 'c8') { b[0][3] = 'bR'; b[0][0] = null; }
-        }
-        return true;
-    }
-
-    let analysisPV = [];
-    let analysisIndex = 0;
-    let analysisBase = null;
-
-    function renderPvList(pv) {
-        if (!pvList) return;
-        pvList.innerHTML = '';
-        if (!pv || pv.length === 0) {
-            const li = document.createElement('li');
-            li.textContent = 'No moves found';
-            pvList.appendChild(li);
-            return;
-        }
-        for (let i = 0; i < pv.length; i++) {
-            const li = document.createElement('li');
-            li.textContent = pv[i];
-            if (i === analysisIndex) {
-                li.style.background = 'var(--accent)';
-                li.style.color = 'white';
-            }
-            pvList.appendChild(li);
-        }
-    }
-
-    async function analyzeCurrentPosition() {
-        const idx = Math.max(0, Math.min(currentMoves.length, currentIndex));
-        const st = computeBoardToIndex(idx);
-        analysisBase = { b: st.b, side: st.side };
-        if (pvInfo) pvInfo.textContent = 'Analyzing...';
-        const det = await evalFenDetailed(boardToFEN(st.b, st.side), getEvalSettings());
-        analysisPV = Array.isArray(det.pv) ? det.pv.slice(0, 16) : [];
-        analysisIndex = 0;
-        renderPvList(analysisPV);
-        if (pvInfo) {
-            if (det && typeof det.score === 'number') {
-                const val = (det.score >= 0 ? '+' : '') + det.score.toFixed(2);
-                pvInfo.textContent = 'Score: ' + val;
-            } else {
-                pvInfo.textContent = 'Score: -';
-            }
-        }
-        renderBoard(st.b);
-        updateEvalBarForBoard(st.b, st.side);
-    }
-
     function updateClassification(index) {
         if (!classificationTag || !classificationDetail) return;
         if (!window.chessPGN || !window.chessPGN.classifications) {
@@ -723,21 +646,6 @@ document.addEventListener('DOMContentLoaded', function () {
         classificationTag.textContent = data.label;
         classificationTag.className = 'classification-tag ' + data.label.toLowerCase();
         classificationDetail.textContent = `Evaluation: ${data.score >= 0 ? '+' : ''}${data.score?.toFixed(1) || '-'}`;
-    }
-
-    function stepPv(delta) {
-        if (!analysisBase || !analysisPV || analysisPV.length === 0) return;
-        analysisIndex = Math.max(0, Math.min(analysisPV.length, analysisIndex + delta));
-        let b = JSON.parse(JSON.stringify(analysisBase.b));
-        let side = analysisBase.side;
-        for (let i = 0; i < analysisIndex; i++) {
-            const uci = analysisPV[i];
-            applyUci(b, uci, side);
-            side = side === 'w' ? 'b' : 'w';
-        }
-        renderPvList(analysisPV);
-        renderBoard(b);
-        updateEvalBarForBoard(b, side);
     }
 
     function rebuildTo(index) {
