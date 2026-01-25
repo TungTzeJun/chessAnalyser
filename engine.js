@@ -364,7 +364,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!ok) { evalLabel.textContent = '-'; return; }
         const fen = boardToFEN(b, side);
         const det = await evalFenDetailed(fen, getEvalSettings());
-        const pct = evalToPercent(det.score);
+        const score = det ? det.score : null;
+        const pct = evalToPercent(score);
         const h = Math.round(pct * 100);
         evalFill.style.height = h + '%';
         if (det.score === null) {
@@ -453,121 +454,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
         return series;
-    }
-
-    // Piece-Square Tables for better positional evaluation
-    const PST = {
-        P: [
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0],
-            [1.0, 1.0, 2.0, 3.0, 3.0, 2.0, 1.0, 1.0],
-            [0.5, 0.5, 1.0, 2.5, 2.5, 1.0, 0.5, 0.5],
-            [0.0, 0.0, 0.0, 2.0, 2.0, 0.0, 0.0, 0.0],
-            [0.5, -0.5, -1.0, 0.0, 0.0, -1.0, -0.5, 0.5],
-            [0.5, 1.0, 1.0, -2.0, -2.0, 1.0, 1.0, 0.5],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        ],
-        N: [
-            [-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0],
-            [-4.0, -2.0, 0.0, 0.0, 0.0, 0.0, -2.0, -4.0],
-            [-3.0, 0.0, 1.0, 1.5, 1.5, 1.0, 0.0, -3.0],
-            [-3.0, 0.5, 1.5, 2.0, 2.0, 1.5, 0.5, -3.0],
-            [-3.0, 0.0, 1.5, 2.0, 2.0, 1.5, 0.0, -3.0],
-            [-3.0, 0.5, 1.0, 1.5, 1.5, 1.0, 0.5, -3.0],
-            [-4.0, -2.0, 0.0, 0.5, 0.5, 0.0, -2.0, -4.0],
-            [-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0]
-        ],
-        B: [
-            [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0],
-            [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0],
-            [-1.0, 0.0, 0.5, 1.0, 1.0, 0.5, 0.0, -1.0],
-            [-1.0, 0.5, 0.5, 1.0, 1.0, 0.5, 0.5, -1.0],
-            [-1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, -1.0],
-            [-1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0],
-            [-1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5, -1.0],
-            [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0]
-        ],
-        R: [
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5],
-            [-0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.5],
-            [-0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.5],
-            [-0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.5],
-            [-0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.5],
-            [-0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.5],
-            [0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0]
-        ],
-        Q: [
-            [-2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0],
-            [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0],
-            [-1.0, 0.0, 0.5, 0.5, 0.5, 0.5, 0.0, -1.0],
-            [-0.5, 0.0, 0.5, 0.5, 0.5, 0.5, 0.0, -0.5],
-            [0.0, 0.0, 0.5, 0.5, 0.5, 0.5, 0.0, -0.5],
-            [-1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.0, -1.0],
-            [-1.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, -1.0],
-            [-2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0]
-        ],
-        K: [
-            [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-            [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-            [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-            [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-            [-2.0, -3.0, -3.0, -4.0, -4.0, -3.0, -3.0, -2.0],
-            [-1.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -1.0],
-            [2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0],
-            [2.0, 3.0, 1.0, 0.0, 0.0, 1.0, 3.0, 2.0]
-        ]
-    };
-
-    function evalPosition(b) {
-        const pieceValues = { P: 10, N: 32, B: 33, R: 50, Q: 90, K: 2000 };
-        let score = 0;
-
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                const piece = b[r][c];
-                if (!piece) continue;
-
-                const color = piece[0];
-                const type = piece[1];
-                const isWhite = color === 'w';
-
-                // Base material value
-                const material = pieceValues[type] || 0;
-
-                // Position value from PST
-                // PST table is from White's perspective (row 0 is black side)
-                // For white: row is 7-r (to flip coordinate system)
-                // For black: row is r, we flip c to maintain symmetry if needed but usually c is symmetric
-                let pRow = isWhite ? r : (7 - r);
-                let pCol = c;
-                const positional = (PST[type] ? PST[type][pRow][pCol] : 0);
-
-                if (isWhite) {
-                    score += material + positional;
-                } else {
-                    score -= (material + positional);
-                }
-            }
-        }
-        return score / 10; // Normalized to 1.0 = pawn
-    }
-
-    function deriveEvalFromMoves(tokens) {
-        const res = [];
-        let b = initialBoard();
-        let side = 'w';
-        for (let i = 0; i < tokens.length; i++) {
-            const san = tokens[i];
-            if (!san) continue;
-            if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
-            const ok = applySAN(b, san.replace(/[!?]+/g, ''), side);
-            if (ok) {
-                res.push(evalPosition(b));
-                side = side === 'w' ? 'b' : 'w';
-            }
-        }
-        return res;
     }
 
     const PIECE_UNI = {
@@ -935,12 +821,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         evals = sfSeries;
                         if (msgEl) msgEl.textContent = 'Stockfish analysis complete';
                     } else {
-                        evals = deriveEvalFromMoves(moves);
-                        if (msgEl) msgEl.textContent = 'Using material-based eval';
+                        evals = [];
+                        if (msgEl) msgEl.textContent = 'Stockfish analysis failed';
                     }
                 } catch (e) {
-                    evals = deriveEvalFromMoves(moves);
-                    if (msgEl) msgEl.textContent = 'Using material-based eval';
+                    evals = [];
+                    if (msgEl) msgEl.textContent = 'Stockfish analysis error';
                 }
             }
             window.chessPGN.evals = evals;
