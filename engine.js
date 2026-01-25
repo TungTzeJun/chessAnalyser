@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const nextBtn = document.getElementById('nextMove');
     const lastBtn = document.getElementById('lastMove');
     const moveStatus = document.getElementById('moveStatus');
+    const analysisDepthSelect = document.getElementById('analysisDepth');
 
     if (!input || !button) return;
 
@@ -226,6 +227,11 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log('Stockfish: Engine ready');
 
             engineWorker.postMessage('ucinewgame');
+
+            // Performance/Accuracy Settings
+            engineWorker.postMessage('setoption name Hash value 256');
+            engineWorker.postMessage('setoption name Threads value 4');
+
             engineReady = true;
             return true;
         } catch (err) {
@@ -264,7 +270,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getEvalSettings() {
-        return { mode: 'depth', value: 13 };
+        let depth = 18;
+        if (analysisDepthSelect) {
+            const v = parseInt(analysisDepthSelect.value, 10);
+            if (!isNaN(v)) depth = v;
+        }
+        return { mode: 'depth', value: depth };
     }
 
     function parseScoreLine(line) {

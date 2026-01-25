@@ -118,6 +118,32 @@ header {
     color: var(--muted);
 }
 
+.depth-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0b1220;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 12px;
+}
+
+.depth-control label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.depth-control select {
+    background: transparent;
+    color: var(--text);
+    border: none;
+    padding: 8px 0;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+}
+
 #results {
     width: 100%;
     margin: 0 0 48px;
@@ -301,13 +327,40 @@ header {
     color: var(--muted);
 }
 
-.classification-tag.book { background: #3b82f6; color: white; }
-.classification-tag.best { background: #10b981; color: white; }
-.classification-tag.excellent { background: #34d399; color: white; }
-.classification-tag.good { background: #60a5fa; color: white; }
-.classification-tag.inaccuracy { background: #fbbf24; color: black; }
-.classification-tag.mistake { background: #f97316; color: white; }
-.classification-tag.blunder { background: #ef4444; color: white; }
+.classification-tag.book {
+    background: #3b82f6;
+    color: white;
+}
+
+.classification-tag.best {
+    background: #10b981;
+    color: white;
+}
+
+.classification-tag.excellent {
+    background: #34d399;
+    color: white;
+}
+
+.classification-tag.good {
+    background: #60a5fa;
+    color: white;
+}
+
+.classification-tag.inaccuracy {
+    background: #fbbf24;
+    color: black;
+}
+
+.classification-tag.mistake {
+    background: #f97316;
+    color: white;
+}
+
+.classification-tag.blunder {
+    background: #ef4444;
+    color: white;
+}
 
 .classification-detail {
     font-size: 11px;
