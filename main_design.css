@@ -334,6 +334,17 @@ header {
     color: var(--muted);
 }
 
+.classification-tag.brilliant {
+    background: #06b6d4;
+    color: white;
+    box-shadow: 0 0 10px #06b6d488;
+}
+
+.classification-tag.great {
+    background: #059669;
+    color: white;
+}
+
 .classification-tag.book {
     background: #3b82f6;
     color: white;

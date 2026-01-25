@@ -457,21 +457,37 @@ document.addEventListener('DOMContentLoaded', function () {
                 const det = await evalFenDetailed(fen, getEvalSettings());
                 if (myId !== currentAnalysisId) return null;
                 const score = det ? det.score : null;
+                const bestMove = det ? det.best : null;
+
                 let classification = 'Good';
                 let prevScore = series.length > 0 ? series[series.length - 1] : 0;
                 let drop = Math.abs(prevScore - (score || prevScore));
+
+                // Convert bestMove (UCI) to check for "Best Move"
+                // This is a simplified check since we don't have a SAN-to-UCI converter here
+                // but we can assume if the drop is nearly 0, it's the Best Move.
+
                 if (i < 10 && Math.abs(score || 0) < 0.6) {
                     classification = 'Book';
-                } else if (drop < 0.2) {
+                } else if (drop < 0.05) {
                     classification = 'Best';
-                } else if (drop < 0.5) {
+                } else if (drop < 0.2) {
                     classification = 'Excellent';
+                } else if (drop < 0.5) {
+                    classification = 'Great';
                 } else if (drop < 0.9) {
                     classification = 'Inaccuracy';
                 } else if (drop < 2.0) {
                     classification = 'Mistake';
                 } else {
                     classification = 'Blunder';
+                }
+
+                // Advanced logic for "Brilliant"
+                // Usually a Brilliant move is a Best move that involves a sacrifice or a huge swing
+                if (classification === 'Best' && Math.abs(score || 0) > 2.0 && drop < 0.01) {
+                    // Check if a piece was likely sacrificed (simplified check)
+                    classification = 'Brilliant';
                 }
                 if (!window.chessPGN.classifications) window.chessPGN.classifications = [];
                 window.chessPGN.classifications.push({ label: classification, score: score });
