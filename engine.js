@@ -423,7 +423,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!ok) { evalLabel.textContent = '-'; return; }
         const fen = boardToFEN(b, side);
         const det = await evalFenDetailed(fen, getEvalSettings());
-        const score = det ? det.score : null;
+        let score = det ? det.score : null;
+
+        // Invert if side to move is Black
+        if (score !== null && side === 'b') {
+            score = -score;
+        }
+
         const pct = evalToPercent(score);
         const h = Math.round(pct * 100);
         evalFill.style.height = h + '%';
@@ -473,12 +479,22 @@ document.addEventListener('DOMContentLoaded', function () {
             const applied = applySAN(b, san.replace(/[!?]+/g, ''), side);
             if (applied) {
                 const fen = boardToFEN(b, side === 'w' ? 'b' : 'w');
-                // Use the requested depth: 15
+                // Use the requested depth: 16
                 const det = await evalFenDetailed(fen, settings);
 
                 if (myId !== currentAnalysisId) break;
 
-                const score = det ? det.score : null;
+                let score = det ? det.score : null;
+
+                // Stockfish returns score from the perspective of the side to move.
+                // We want the score from White's perspective.
+                // The FEN we just analyzed has side-to-move as (side === 'w' ? 'b' : 'w').
+                // If side-to-move is Black, we must invert the score.
+                const sideToMove = side === 'w' ? 'b' : 'w';
+                if (score !== null && sideToMove === 'b') {
+                    score = -score;
+                }
+
                 if (score === null) {
                     series.push(series.length > 0 ? series[series.length - 1] : 0);
                 } else {
