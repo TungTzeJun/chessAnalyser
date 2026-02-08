@@ -162,6 +162,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    async function createBlobWorker(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to fetch script: ${response.statusText}`);
+            const script = await response.text();
+            const blob = new Blob([script], { type: 'application/javascript' });
+            return new Worker(URL.createObjectURL(blob));
+        } catch (e) {
+            console.error('Failed to create blob worker:', e);
+            throw e;
+        }
+    }
+
     async function initStockfish() {
         try {
             if (engineWorker && engineReady) return true;
@@ -178,10 +191,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 let worker = null;
                 for (let i = 0; i < candidates.length; i++) {
                     try {
-                        console.log(`Stockfish: Trying local candidate: ${candidates[i]}`);
-                        worker = new Worker(candidates[i]);
+                        const src = candidates[i];
+                        console.log(`Stockfish: Trying candidate: ${src}`);
+                        if (src.startsWith('http') || src.startsWith('//')) {
+                            worker = await createBlobWorker(src);
+                        } else {
+                            worker = new Worker(src);
+                        }
                         break;
-                    } catch (e) { worker = null; }
+                    } catch (e) {
+                        console.warn(`Stockfish: Candidate ${candidates[i]} failed:`, e);
+                        worker = null;
+                    }
                 }
                 if (!worker && typeof window !== 'undefined') {
                     const factory = (typeof window.Stockfish === 'function') ? window.Stockfish :
@@ -771,6 +792,7 @@ document.addEventListener('DOMContentLoaded', function () {
             initBoard();
         } catch (err) {
             if (message) message.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+            console.error('Full error:', err);
         }
     });
 });
