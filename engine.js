@@ -725,8 +725,42 @@ document.addEventListener('DOMContentLoaded', function () {
         // updateClassification(applied); // Removed
         if (moveStatus) moveStatus.textContent = 'Move ' + applied + ' / ' + currentMoves.length;
         const toMove = applied % 2 === 0 ? 'w' : 'b';
-        // Always update evaluation for current board
-        updateEvalBarForBoard(b, toMove);
+
+        // SYNC FIX: If we have a pre-computed eval, use it!
+        let hasPrecomputed = false;
+        if (window.chessPGN && Array.isArray(window.chessPGN.evals) && window.chessPGN.evals.length > applied) {
+            // The evals array maps 1:1 to moves? 
+            // Usually evals[0] is state after move 1? Or state after move 0 (start)?
+            // Let's check evaluateWithStockfish push logic.
+            // It pushes after every move. evals[0] is after move 1.
+            // But index 0 in rebuildTo means "start position".
+            // If applied === 0 (start), we have no eval usually (or maybe 0.5/0.2 from start).
+            // evaluateWithStockfish starts loop at i=0 (move 1).
+            // So evals[i] corresponds to state after move i+1.
+            // applied is the number of moves applied.
+            // If applied == 0, we can default to 0.2 (start).
+            // If applied > 0, we want evals[applied - 1].
+
+            if (applied > 0) {
+                const score = window.chessPGN.evals[applied - 1];
+                if (typeof score === 'number' || typeof score === 'string') {
+                    // We have a value! Update bar directly.
+                    // We need to construct a mini-series or just reuse updateEvalBarFromSeries logic?
+                    // updateEvalBarFromSeries takes (series, idx).
+                    updateEvalBarFromSeries(window.chessPGN.evals, applied - 1);
+                    hasPrecomputed = true;
+                }
+            } else {
+                // Start position
+                updateEvalBarFromSeries([0.2], 0);
+                hasPrecomputed = true;
+            }
+        }
+
+        if (!hasPrecomputed) {
+            // Only if we don't have it, ask Stockfish (async)
+            updateEvalBarForBoard(b, toMove);
+        }
         return b;
     }
 
