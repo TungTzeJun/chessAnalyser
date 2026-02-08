@@ -162,18 +162,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    async function createBlobWorker(url) {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Failed to fetch script: ${response.statusText}`);
-            const script = await response.text();
-            const blob = new Blob([script], { type: 'application/javascript' });
-            return new Worker(URL.createObjectURL(blob));
-        } catch (e) {
-            console.error('Failed to create blob worker:', e);
-            throw e;
-        }
-    }
+
 
     async function initStockfish() {
         try {
@@ -186,18 +175,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.log('Stockfish: Connected to backend successfully');
             } catch (e) {
                 console.warn('Stockfish: Backend connection failed, falling back to local/CDN worker', e);
-                const dynamic = (typeof window !== 'undefined' && typeof window.STOCKFISH_WORKER_PATH === 'string') ? [window.STOCKFISH_WORKER_PATH] : [];
-                const candidates = dynamic.concat(['stockfish.js', 'stockfish-lite.js', 'stockfish-asm.js', 'stockfish.wasm.js']);
+                const candidates = ['stockfish.js', '/stockfish.js', './stockfish.js'];
                 let worker = null;
                 for (let i = 0; i < candidates.length; i++) {
                     try {
                         const src = candidates[i];
                         console.log(`Stockfish: Trying candidate: ${src}`);
-                        if (src.startsWith('http') || src.startsWith('//')) {
-                            worker = await createBlobWorker(src);
-                        } else {
-                            worker = new Worker(src);
-                        }
+                        worker = new Worker(src);
                         break;
                     } catch (e) {
                         console.warn(`Stockfish: Candidate ${candidates[i]} failed:`, e);
