@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getEvalSettings() {
-        let depth = 16;
+        let depth = 18;
         let threads = 2;
         let multipv = 1;
 
@@ -460,7 +460,7 @@ document.addEventListener('DOMContentLoaded', function () {
         let side = 'w';
 
         // Settings for "Fast but decent" analysis
-        const settings = { mode: 'depth', value: 16, threads: 2, multipv: 1 };
+        const settings = { mode: 'depth', value: 18, threads: 2, multipv: 1 };
 
         for (let i = 0; i < tokens.length; i++) {
             if (myId !== currentAnalysisId) { console.log('Analysis cancelled'); break; }
@@ -479,7 +479,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const applied = applySAN(b, san.replace(/[!?]+/g, ''), side);
             if (applied) {
                 const fen = boardToFEN(b, side === 'w' ? 'b' : 'w');
-                // Use the requested depth: 16
+                // Use the requested depth: 18
                 const det = await evalFenDetailed(fen, settings);
 
                 if (myId !== currentAnalysisId) break;
