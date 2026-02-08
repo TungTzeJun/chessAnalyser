@@ -85,36 +85,40 @@ document.addEventListener('DOMContentLoaded', function () {
     function drawEval(series, pointer) {
         if (!evalCanvas) return;
         const ctx = evalCanvas.getContext('2d');
-        ctx.clearRect(0, 0, evalCanvas.width, evalCanvas.height);
         const w = evalCanvas.width;
         const h = evalCanvas.height;
-        const mid = Math.floor(h / 2);
-        ctx.strokeStyle = '#1f2937';
-        ctx.beginPath();
-        ctx.moveTo(0, mid);
-        ctx.lineTo(w, mid);
-        ctx.stroke();
+        ctx.clearRect(0, 0, w, h);
+
         if (!series || series.length === 0) return;
-        const min = Math.min(...series);
-        const max = Math.max(...series);
-        const span = Math.max(0.5, Math.max(Math.abs(min), Math.abs(max)));
+
+        // Draw center line
+        ctx.strokeStyle = '#ccc';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, h / 2);
+        ctx.lineTo(w, h / 2);
+        ctx.stroke();
+
         ctx.strokeStyle = '#3b82f6';
         ctx.lineWidth = 2;
         ctx.beginPath();
+
         for (let i = 0; i < series.length; i++) {
             const x = Math.floor((i / Math.max(1, series.length - 1)) * w);
-            const y = mid - Math.floor((series[i] / span) * (h / 2 - 8));
+            // Use evalToPercent to get 0..1 value (0=Black winning, 1=White winning)
+            // Lichess style: 1.0 is top (White), 0.0 is bottom (Black).
+            // Canvas Y: 0 is top, h is bottom.
+            // So y = (1 - pct) * h
+            const s = series[i];
+            const pct = evalToPercent(s);
+            const y = (1 - pct) * h;
+
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke();
-        ctx.fillStyle = '#93c5fd';
-        for (let i = 0; i < series.length; i++) {
-            const x = Math.floor((i / Math.max(1, series.length - 1)) * w);
-            const y = mid - Math.floor((series[i] / span) * (h / 2 - 8));
-            ctx.beginPath();
-            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-            ctx.fill();
-        }
+
+        // Draw points? Maybe too cluttered. Let's skip points for now, just the line.
+
         if (typeof pointer === 'number') {
             const px = Math.floor((Math.min(Math.max(pointer, 0), Math.max(0, series.length - 1)) / Math.max(1, series.length - 1)) * w);
             ctx.strokeStyle = '#ef4444';
@@ -278,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getEvalSettings() {
-        let depth = 14;
+        let depth = 16;
         let threads = 2;
         let multipv = 1;
 
@@ -397,9 +401,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function evalToPercent(s) {
         if (s === null) return 0.5;
-        if (Math.abs(s) >= 98) return s > 0 ? 0.99 : 0.01;
-        const t = Math.tanh(s / 2);
-        return (t + 1) / 2;
+        // Mate handling: 
+        // If s is > 90 (mate for white), return 0.99
+        // If s is < -90 (mate for black), return 0.01
+        if (s > 90) return 0.99;
+        if (s < -90) return 0.01;
+
+        // Lichess formula: 2 / (1 + exp(-0.004 * centipawns)) - 1
+        // My 's' is pawns, so centipawns = s * 100
+        // formula = 2 / (1 + exp(-0.4 * s)) - 1
+        // But that formula returns -1 to 1.
+        // We want 0 to 1.
+        // So: 1 / (1 + exp(-0.4 * s))
+
+        return 1 / (1 + Math.exp(-0.4 * s));
     }
 
     async function updateEvalBarForBoard(b, side) {
@@ -439,7 +454,7 @@ document.addEventListener('DOMContentLoaded', function () {
         let side = 'w';
 
         // Settings for "Fast but decent" analysis
-        const settings = { mode: 'depth', value: 15, threads: 2, multipv: 1 };
+        const settings = { mode: 'depth', value: 16, threads: 2, multipv: 1 };
 
         for (let i = 0; i < tokens.length; i++) {
             if (myId !== currentAnalysisId) { console.log('Analysis cancelled'); break; }
