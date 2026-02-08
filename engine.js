@@ -14,6 +14,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const evalBar = document.getElementById('evalBar');
     const evalFill = document.getElementById('evalFill');
     const evalLabel = document.getElementById('evalLabel');
+    const firstBtn = document.getElementById('firstMove');
+    const prevBtn = document.getElementById('prevMove');
+    const nextBtn = document.getElementById('nextMove');
+    const lastBtn = document.getElementById('lastMove');
+    const moveStatus = document.getElementById('moveStatus');
     const analysisDepthSelect = document.getElementById('analysisDepth');
     const analysisThreadsSelect = document.getElementById('analysisThreads');
     const analysisMultiPVSelect = document.getElementById('analysisMultiPV');
