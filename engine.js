@@ -23,6 +23,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const analysisThreadsSelect = document.getElementById('analysisThreads');
     const analysisMultiPVSelect = document.getElementById('analysisMultiPV');
 
+    const analysisOverlay = document.getElementById('analysisOverlay');
+    const analysisText = document.getElementById('analysisText');
+    const analysisProgress = document.getElementById('analysisProgress');
+
     if (!input || !button) return;
 
     function cleanPGN(pgn) {
@@ -416,6 +420,68 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    async function evaluateWithStockfish(tokens) {
+        currentAnalysisId++;
+        const myId = currentAnalysisId;
+
+        // Show overlay
+        if (analysisOverlay) analysisOverlay.hidden = false;
+
+        const ok = await initStockfish();
+        if (!ok) {
+            if (message) message.textContent = 'Stockfish failed to initialize.';
+            if (analysisOverlay) analysisOverlay.hidden = true;
+            return null;
+        }
+
+        const series = [];
+        let b = initialBoard();
+        let side = 'w';
+
+        // Settings for "Fast but decent" analysis
+        const settings = { mode: 'depth', value: 15, threads: 2, multipv: 1 };
+
+        for (let i = 0; i < tokens.length; i++) {
+            if (myId !== currentAnalysisId) { console.log('Analysis cancelled'); break; }
+
+            // Update overlay
+            if (analysisText) analysisText.textContent = `Analyzing move ${i + 1} / ${tokens.length}`;
+            if (analysisProgress) {
+                const pct = ((i + 1) / tokens.length) * 100;
+                analysisProgress.style.width = `${pct}%`;
+            }
+
+            const san = tokens[i];
+            if (!san) continue;
+            if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
+
+            const applied = applySAN(b, san.replace(/[!?]+/g, ''), side);
+            if (applied) {
+                const fen = boardToFEN(b, side === 'w' ? 'b' : 'w');
+                // Use the requested depth: 15
+                const det = await evalFenDetailed(fen, settings);
+
+                if (myId !== currentAnalysisId) break;
+
+                const score = det ? det.score : null;
+                if (score === null) {
+                    series.push(series.length > 0 ? series[series.length - 1] : 0);
+                } else {
+                    series.push(score);
+                }
+
+                side = side === 'w' ? 'b' : 'w';
+            } else {
+                console.warn('Failed to apply move:', san);
+                break;
+            }
+        }
+
+        // Hide overlay when done
+        if (analysisOverlay) analysisOverlay.hidden = true;
+        return series;
+    }
+
     function updateEvalBarFromSeries(series, idx) {
         if (!evalBar || !evalFill || !evalLabel) return;
         if (!series || !series.length) { evalLabel.textContent = '-'; return; }
@@ -660,13 +726,38 @@ document.addEventListener('DOMContentLoaded', function () {
             if (metaEvent) metaEvent.textContent = headers.Event || '-';
             if (metaDate) metaDate.textContent = headers.Date || headers.UTCDate || '-';
             if (metadataCard) metadataCard.hidden = false;
+
+            // If pgn has no embedded evals, run our own analysis
             if (!evals || evals.length === 0) {
-                if (message) message.textContent = 'Game loaded. Analysis will run on demand.';
-                // evaluateWithStockfish removed
+                if (message) message.textContent = 'Starting analysis (Depth 15)...';
+                try {
+                    // This will block interaction via the overlay
+                    const sfSeries = await evaluateWithStockfish(moves);
+                    if (sfSeries && sfSeries.length) {
+                        evals = sfSeries;
+                        if (message) message.textContent = 'Analysis complete.';
+                    } else {
+                        evals = [];
+                        if (message) message.textContent = 'Analysis failed or cancelled.';
+                    }
+                } catch (e) {
+                    evals = [];
+                    if (message) message.textContent = 'Error: ' + e.message;
+                    if (analysisOverlay) analysisOverlay.hidden = true;
+                }
+            } else {
+                // If embedded evals exist, just show them
+                if (message) message.textContent = 'Loaded embedded evaluations.';
             }
+
             window.chessPGN.evals = evals;
-            // drawEval(evals, 0); // Evals array is empty initially
-            // updateEvalBarFromSeries(evals, 0);
+
+            // Draw result
+            if (evals.length > 0) {
+                drawEval(evals, 0);
+                updateEvalBarFromSeries(evals, 0);
+            }
+
             currentMoves = moves;
             currentIndex = 0;
             initBoard();
