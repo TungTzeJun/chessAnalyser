@@ -14,13 +14,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const evalBar = document.getElementById('evalBar');
     const evalFill = document.getElementById('evalFill');
     const evalLabel = document.getElementById('evalLabel');
-    const classificationTag = document.getElementById('classificationTag');
-    const classificationDetail = document.getElementById('classificationDetail');
-    const firstBtn = document.getElementById('firstMove');
-    const prevBtn = document.getElementById('prevMove');
-    const nextBtn = document.getElementById('nextMove');
-    const lastBtn = document.getElementById('lastMove');
-    const moveStatus = document.getElementById('moveStatus');
     const analysisDepthSelect = document.getElementById('analysisDepth');
     const analysisThreadsSelect = document.getElementById('analysisThreads');
     const analysisMultiPVSelect = document.getElementById('analysisMultiPV');
@@ -276,8 +269,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getEvalSettings() {
-        let depth = 18;
-        let threads = 4;
+        let depth = 14;
+        let threads = 2;
         let multipv = 1;
 
         if (analysisDepthSelect) {
@@ -434,77 +427,7 @@ document.addEventListener('DOMContentLoaded', function () {
         evalLabel.textContent = val;
     }
 
-    async function evaluateWithStockfish(tokens) {
-        currentAnalysisId++;
-        const myId = currentAnalysisId;
-        if (message) message.textContent = 'Initializing Stockfish...';
-        const ok = await initStockfish();
-        if (!ok) {
-            if (message) message.textContent = 'Stockfish failed to initialize. Check if backend is running.';
-            return null;
-        }
-        const series = [];
-        let b = initialBoard();
-        let side = 'w';
-        for (let i = 0; i < tokens.length; i++) {
-            if (myId !== currentAnalysisId) { console.log('Analysis cancelled'); return null; }
-            while (engineBusy) {
-                if (myId !== currentAnalysisId) return null;
-                await new Promise(r => setTimeout(r, 100));
-            }
-            if (message) message.textContent = `Analyzing move ${i + 1} / ${tokens.length} with Stockfish...`;
-            const san = tokens[i];
-            if (!san) continue;
-            if (/^(1-0|0-1|1\/2-1\/2)$/.test(san)) break;
-            const applied = applySAN(b, san.replace(/[!?]+/g, ''), side);
-            if (applied) {
-                const fen = boardToFEN(b, side === 'w' ? 'b' : 'w');
-                const det = await evalFenDetailed(fen, getEvalSettings());
-                if (myId !== currentAnalysisId) return null;
-                const score = det ? det.score : null;
-                const bestMove = det ? det.best : null;
 
-                let classification = 'Good';
-                let prevScore = series.length > 0 ? series[series.length - 1] : 0;
-                let drop = Math.abs(prevScore - (score || prevScore));
-
-                // Convert bestMove (UCI) to check for "Best Move"
-                // This is a simplified check since we don't have a SAN-to-UCI converter here
-                // but we can assume if the drop is nearly 0, it's the Best Move.
-
-                if (i < 10 && Math.abs(score || 0) < 0.6) {
-                    classification = 'Book';
-                } else if (drop < 0.05) {
-                    classification = 'Best';
-                } else if (drop < 0.2) {
-                    classification = 'Excellent';
-                } else if (drop < 0.5) {
-                    classification = 'Great';
-                } else if (drop < 0.9) {
-                    classification = 'Inaccuracy';
-                } else if (drop < 2.0) {
-                    classification = 'Mistake';
-                } else {
-                    classification = 'Blunder';
-                }
-
-                // Advanced logic for "Brilliant"
-                // Usually a Brilliant move is a Best move that involves a sacrifice or a huge swing
-                if (classification === 'Best' && Math.abs(score || 0) > 2.0 && drop < 0.01) {
-                    // Check if a piece was likely sacrificed (simplified check)
-                    classification = 'Brilliant';
-                }
-                if (!window.chessPGN.classifications) window.chessPGN.classifications = [];
-                window.chessPGN.classifications.push({ label: classification, score: score });
-                if (score === null) { series.push(prevScore); } else { series.push(score); }
-                side = side === 'w' ? 'b' : 'w';
-            } else {
-                console.warn('Failed to apply move:', san, 'at index', i);
-                break;
-            }
-        }
-        return series;
-    }
 
     const PIECE_UNI = {
         wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
@@ -680,23 +603,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return { b, side };
     }
 
-    function updateClassification(index) {
-        if (!classificationTag || !classificationDetail) return;
-        if (!window.chessPGN || !window.chessPGN.classifications) {
-            classificationTag.textContent = '-';
-            classificationDetail.textContent = 'Analyze game to see quality';
-            return;
-        }
-        const data = window.chessPGN.classifications[index - 1];
-        if (!data) {
-            classificationTag.textContent = '-';
-            classificationDetail.textContent = 'Start of game';
-            return;
-        }
-        classificationTag.textContent = data.label;
-        classificationTag.className = 'classification-tag ' + data.label.toLowerCase();
-        classificationDetail.textContent = `Evaluation: ${data.score >= 0 ? '+' : ''}${data.score?.toFixed(1) || '-'}`;
-    }
+
 
     function rebuildTo(index) {
         let b = initialBoard();
@@ -713,14 +620,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (window.chessPGN && Array.isArray(window.chessPGN.evals)) {
             drawEval(window.chessPGN.evals, applied);
         }
-        updateClassification(applied);
+        // updateClassification(applied); // Removed
         if (moveStatus) moveStatus.textContent = 'Move ' + applied + ' / ' + currentMoves.length;
         const toMove = applied % 2 === 0 ? 'w' : 'b';
-        if (window.chessPGN && Array.isArray(window.chessPGN.evals) && window.chessPGN.evals.length) {
-            updateEvalBarFromSeries(window.chessPGN.evals, Math.max(0, applied - 1));
-        } else {
-            updateEvalBarForBoard(b, toMove);
-        }
+        // Always update evaluation for current board
+        updateEvalBarForBoard(b, toMove);
         return b;
     }
 
@@ -752,25 +656,12 @@ document.addEventListener('DOMContentLoaded', function () {
             if (metaDate) metaDate.textContent = headers.Date || headers.UTCDate || '-';
             if (metadataCard) metadataCard.hidden = false;
             if (!evals || evals.length === 0) {
-                const msgEl = message;
-                if (msgEl) msgEl.textContent = 'Analyzing with Stockfish...';
-                try {
-                    const sfSeries = await evaluateWithStockfish(moves);
-                    if (sfSeries && sfSeries.length) {
-                        evals = sfSeries;
-                        if (msgEl) msgEl.textContent = 'Analysis complete';
-                    } else {
-                        evals = [];
-                        if (msgEl) msgEl.textContent = 'Analysis failed - engine error';
-                    }
-                } catch (e) {
-                    evals = [];
-                    if (msgEl) msgEl.textContent = 'Error: ' + e.message;
-                }
+                if (message) message.textContent = 'Game loaded. Analysis will run on demand.';
+                // evaluateWithStockfish removed
             }
             window.chessPGN.evals = evals;
-            drawEval(evals, 0);
-            updateEvalBarFromSeries(evals, 0);
+            // drawEval(evals, 0); // Evals array is empty initially
+            // updateEvalBarFromSeries(evals, 0);
             currentMoves = moves;
             currentIndex = 0;
             initBoard();
